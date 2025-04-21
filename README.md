@@ -11,6 +11,8 @@ Este proyecto es una plantilla para desarrollar aplicaciones con NodeMCU utiliza
 
 ## Requisitos
 - NodeMCU (ESP8266 o ESP32).
+- Python 3.x instalado en tu sistema.
+- pip (gestor de paquetes de Python).
 - [MicroPython](https://micropython.org/) instalado en el dispositivo.
 - Cable USB para conectar el NodeMCU a tu computadora.
 - Editor de texto o IDE compatible (por ejemplo, [Thonny](https://thonny.org/) o [VS Code](https://code.visualstudio.com/)).
@@ -19,10 +21,40 @@ Este proyecto es una plantilla para desarrollar aplicaciones con NodeMCU utiliza
 1. Clona este repositorio:
    ```bash
    git clone git@github.com:pwqw/libre-gallinero.git
+   cd libre-gallinero
    ```
-2. Conecta tu NodeMCU a tu computadora mediante un cable USB.
-3. Flashea MicroPython en tu dispositivo si aún no lo has hecho. Puedes seguir [esta guía](https://docs.micropython.org/en/latest/esp8266/tutorial/intro.html).
-4. Sube los archivos del proyecto al NodeMCU utilizando una herramienta como `ampy` o el gestor de archivos de Thonny.
+2. Crea y activa un entorno virtual:
+   ```bash
+   python3 -m venv env
+   source env/bin/activate  # En Mac/Linux
+   # O en Windows:
+   # env\Scripts\activate
+   ```
+3. Instala las dependencias de Python:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Conecta tu NodeMCU a tu computadora mediante un cable USB.
+5. Flashea MicroPython en tu dispositivo si aún no lo has hecho. Puedes seguir [esta guía](https://docs.micropython.org/en/latest/esp8266/tutorial/intro.html).
+6. Identifica el puerto serie de tu NodeMCU:
+   - En Mac/Linux: Ejecuta `ls /dev/tty.*` y busca algo como `/dev/tty.usbserial-*`
+   - En Windows: Usa el Administrador de dispositivos y busca el puerto COM asignado
+
+7. Configura la variable de entorno para ampy:
+   ```bash
+   # En Mac/Linux (ajusta el puerto según tu sistema)
+   set -x AMPY_PORT /dev/tty.usbserial-XXXX
+
+   # En Windows (ajusta el puerto según tu sistema)
+   set -x AMPY_PORT COM3
+   ```
+
+8. Sube los archivos al NodeMCU:
+   ```bash
+   ampy put main.py
+   ampy put config.py
+   ampy put -r lib/
+   ```
 
 ## Estructura del Proyecto
 ```
@@ -30,6 +62,7 @@ libre-gallinero/
 ├── main.py          # Archivo principal del proyecto
 ├── config.py        # Configuración del proyecto
 ├── lib/             # Librerías adicionales
+├── requirements.txt # Dependencias de Python
 └── README.md        # Documentación del proyecto
 ```
 
