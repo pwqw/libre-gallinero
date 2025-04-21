@@ -84,7 +84,7 @@ libre-gallinero/
 5. Abre un Pull Request en este repositorio.
 
 ## Licencia
-Este proyecto está licenciado bajo la [MIT License](LICENSE).
+Este proyecto está licenciado bajo la [GNU General Public License v3.0](LICENSE).
 
 ## Recursos
 - [Documentación oficial de MicroPython](https://docs.micropython.org/)
