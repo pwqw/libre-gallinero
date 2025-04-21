@@ -51,17 +51,18 @@ Este proyecto es una plantilla para desarrollar aplicaciones con NodeMCU utiliza
 
 8. Sube los archivos al NodeMCU:
    ```bash
-   ampy put main.py
-   ampy put config.py
-   ampy put -r lib/
+   ampy put -r src .
    ```
 
 ## Estructura del Proyecto
 ```
 libre-gallinero/
-├── main.py          # Archivo principal del proyecto
-├── config.py        # Configuración del proyecto
-├── lib/             # Librerías adicionales
+├── env/             # Entorno python3 venv
+├── src/             # Código fuente del proyecto
+│   ├── main.py      # Archivo principal del proyecto
+│   ├── config.py    # Configuración del proyecto
+│   ├── solar.py     # Módulo de control solar
+│   └── tests/*.py   # Módulo de pytest
 ├── requirements.txt # Dependencias de Python
 └── README.md        # Documentación del proyecto
 ```
