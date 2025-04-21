@@ -1,3 +1,4 @@
 adafruit-ampy>=1.1.0
 esptool>=4.6.2
 python-dotenv>=1.0.0
+pytest>=8.0.0
