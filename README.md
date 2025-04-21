@@ -1,13 +1,16 @@
-# Proyecto Open Source con NodeMCU y MicroPython
+# Libre Gallinero
 
 ## Descripción
-Este proyecto es una plantilla para desarrollar aplicaciones con NodeMCU utilizando MicroPython. Está diseñado para ser un punto de partida para proyectos de hardware y software open source.
+Sistema de automatización para el control lumínico y térmico de gallineros, especialmente diseñado para gallinas ponedoras. Utiliza NodeMCU con MicroPython para simular los horarios de luz natural del verano y mantener una temperatura adecuada para los pollitos.
+
+Para una descripción más detallada del proyecto, sus componentes y funcionalidades, consulta la [Descripción Detallada del Proyecto](DESCRIPCION-DEL-PROYECTO.md).
 
 ## Características
-- Compatible con NodeMCU (ESP8266/ESP32).
-- Código escrito en MicroPython.
-- Fácil de extender y personalizar.
-- Documentación clara y detallada.
+- Control automático de iluminación basado en horarios solares de verano
+- Control de temperatura para pollitos con sensor DHT11
+- Interfaz web para monitoreo
+- Compatible con NodeMCU (ESP8266/ESP32)
+- Configuración WiFi vía punto de acceso
 
 ## Requisitos
 - NodeMCU (ESP8266 o ESP32).
@@ -57,20 +60,20 @@ Este proyecto es una plantilla para desarrollar aplicaciones con NodeMCU utiliza
 ## Estructura del Proyecto
 ```
 libre-gallinero/
-├── env/             # Entorno python3 venv
 ├── src/             # Código fuente del proyecto
-│   ├── main.py      # Archivo principal del proyecto
-│   ├── config.py    # Configuración del proyecto
-│   ├── solar.py     # Módulo de control solar
-│   └── tests/*.py   # Módulo de pytest
-├── requirements.txt # Dependencias de Python
-└── README.md        # Documentación del proyecto
+│   ├── main.py      # Control principal del sistema
+│   ├── config.py    # Configuración de WiFi y parámetros del sistema
+│   ├── solar.py     # Cálculos de horarios solares
+│   └── tests/*.py   # Pruebas unitarias
+├── docs/            # Documentación y diagramas
+└── requirements.txt # Dependencias de Python
 ```
 
 ## Uso
-1. Configura los parámetros necesarios en `config.py`.
-2. Sube los archivos al NodeMCU.
-3. Reinicia el dispositivo para ejecutar el código.
+1. Configura los parámetros de WiFi y ubicación en `config.py`
+2. Sube los archivos al NodeMCU
+3. Al iniciar, el dispositivo creará un punto de acceso WiFi si no puede conectarse a la red configurada
+4. Accede a la interfaz web para monitorear el estado del sistema
 
 ## Contribuciones
 ¡Las contribuciones son bienvenidas! Si deseas contribuir, por favor sigue estos pasos:
