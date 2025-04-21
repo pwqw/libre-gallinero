@@ -1,7 +1,7 @@
 # Libre Gallinero
 
 ## Descripción
-Sistema de automatización para el control lumínico y térmico de gallineros, especialmente diseñado para gallinas ponedoras. Utiliza NodeMCU con MicroPython para simular los horarios de luz natural del verano y mantener una temperatura adecuada para los pollitos.
+Sistema de automatización para el control lumínico y térmico de aves de corral, especialmente diseñado para gallinas ponedoras. Utiliza NodeMCU con MicroPython para simular los horarios de luz natural del verano y mantener una temperatura adecuada para los pollitos.
 
 Para una descripción más detallada del proyecto, sus componentes y funcionalidades, consulta la [Descripción Detallada del Proyecto](DESCRIPCION-DEL-PROYECTO.md).
 
@@ -93,4 +93,4 @@ Este proyecto está licenciado bajo la [MIT License](LICENSE).
 
 ---
 
-¡Gracias por usar esta plantilla! Si tienes alguna pregunta o sugerencia, no dudes en abrir un issue.
+¡Gracias por ver este proyecto! Si tienes alguna pregunta o sugerencia, no dudes en abrir un issue.
