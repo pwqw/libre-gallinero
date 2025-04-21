@@ -1,0 +1,28 @@
+# Archivos y carpetas generados por el sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de configuración de IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# Archivo git config
+.gitconfig
+
+# Archivos de Python
+__pycache__/
+*.py[cod]
+
+# Archivos subidos al NodeMCU
+*.mpy
+
+# Archivos de logs y temporales
+*.log
+*.tmp
+
+# Herramientas de carga
+ampy.log
+
+# Otros
+.env
