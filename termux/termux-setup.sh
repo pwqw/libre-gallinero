@@ -5,6 +5,7 @@ cd $HOME
 
 # 1. Instalar las dependencias necesarias
 pkg update -y
+pkg install -y root-repo
 pkg upgrade -y
 pkg install -y git python3 python3-pip termux-api termux-widget termux-tools termux-toast
 
