@@ -39,6 +39,8 @@ import time
 from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config
 from src.logic import relay_ponedoras_state, relay_pollitos_state
 from src.hotspot import hotspot_config_loop
+from src.config import load_location_config
+from src.solar import calc_sun_times
 
 # Pines (ajusta según tu hardware)
 RELAY1_PIN = 5  # D1 en NodeMCU
@@ -76,46 +78,42 @@ def sync_time():
             time.sleep(2)
     return False
 
-# Obtener hora local
+# Obtener hora local ajustada por zona horaria
 def get_local_time():
     tm = time.localtime()
-    return tm[0], tm[1], tm[2], tm[3], tm[4]  # año, mes, día, hora, minuto
+    # Ajuste de zona horaria según longitud (aprox. cada 15° = 1h)
+    location = load_location_config()
+    longitude = location.get('longitude', -60)
+    tz_offset = int(round(longitude / 15))  # Por defecto, negativo en el hemisferio oeste
+    hour = (tm[3] + tz_offset) % 24
+    return tm[0], tm[1], tm[2], hour, tm[4]  # año, mes, día, hora local, minuto
 
-# Controlar relay 1 según amanecer/atardecer
-def control_relay1():
+# Controlar relay ponedoras según lógica solar y ubicación
+def control_relay_ponedoras():
     year, month, day, hour, minute = get_local_time()
-    sunrise, sunset = calc_sun_times(year, month, day, LATITUDE)
-    # Amanecer verano: 21 de diciembre
-    sunrise_summer, _ = calc_sun_times(year, 12, 21, LATITUDE)
-    # Atardecer verano: 21 de diciembre
-    _, sunset_summer = calc_sun_times(year, 12, 21, LATITUDE)
-    now_minutes = hour*60 + minute
-    sunrise_today = sunrise[0]*60 + sunrise[1]
-    sunset_today = sunset[0]*60 + sunset[1]
-    sunrise_summer_m = sunrise_summer[0]*60 + sunrise_summer[1]
-    sunset_summer_m = sunset_summer[0]*60 + sunset_summer[1]
-    # Prender relay1 al amanecer de verano, apagar al amanecer real
-    if sunrise_summer_m <= now_minutes < sunrise_today:
-        relay1.value(1)
-    elif sunrise_today <= now_minutes < sunset_today:
-        relay1.value(0)
-    # Prender relay1 al atardecer real, apagar al atardecer de verano
-    elif sunset_today <= now_minutes < sunset_summer_m:
-        relay1.value(1)
-    else:
-        relay1.value(0)
+    location = load_location_config()
+    latitude = location.get('latitude', -32.5)
+    longitude = location.get('longitude', -60)
+    # Amanecer y atardecer de verano (21 de diciembre)
+    sunrise_summer, sunset_summer = calc_sun_times(year, 12, 21, latitude, longitude)
+    # Amanecer y atardecer de la fecha actual
+    sunrise_today, sunset_today = calc_sun_times(year, month, day, latitude, longitude)
+    # Convertir a minutos para lógica
+    now_min = hour * 60 + minute
+    sunrise_summer_min = sunrise_summer[0] * 60 + sunrise_summer[1]
+    sunrise_today_min = sunrise_today[0] * 60 + sunrise_today[1]
+    sunset_today_min = sunset_today[0] * 60 + sunset_today[1]
+    sunset_summer_min = sunset_summer[0] * 60 + sunset_summer[1]
+    relay1.value(relay_ponedoras_state(now_min, sunrise_summer_min, sunrise_today_min, sunset_today_min, sunset_summer_min))
 
-# Controlar relay 2 según temperatura
-def control_relay2():
+# Controlar relay pollitos según temperatura
+def control_relay_pollitos():
     try:
         dht_sensor.measure()
         temp = dht_sensor.temperature()
-        if temp > TEMP_THRESHOLD:
-            relay2.value(1)  # Activa relay (apaga conexión)
-        else:
-            relay2.value(0)  # Normal abierto
+        relay2.value(relay_pollitos_state(temp))
     except Exception as e:
-        print('Error leyendo DHT22:', e)
+        print('Error leyendo DHT11:', e)
 
 # Main loop
 def main():
@@ -127,8 +125,8 @@ def main():
         print('No se pudo sincronizar la hora')
         return
     while True:
-        control_relay1()
-        control_relay2()
+        control_relay_ponedoras()
+        control_relay_pollitos()
         time.sleep(30)
 
 if __name__ == "__main__":
