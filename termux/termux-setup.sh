@@ -7,7 +7,7 @@ cd $HOME
 pkg update -y
 pkg install -y root-repo
 pkg upgrade -y
-pkg install -y git python3 python3-pip termux-api termux-widget termux-tools termux-toast
+pkg install -y git python python-pip termux-api termux-tools 
 
 # 2. Clonar el repositorio libre-gallina (si no existe)
 if [ ! -d "libre-gallina" ]; then
@@ -17,8 +17,9 @@ fi
 # 3. Navegar al directorio del repositorio
 cd libre-gallina
 
-# 4. Actualizar el repositorio
-git pull --rebase
+# 4. Actualizar el repositorio (forzado)
+git fetch --all
+git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 
 # 5. Crear el entorno virtual (si no existe)
 if [ ! -d "env" ]; then
