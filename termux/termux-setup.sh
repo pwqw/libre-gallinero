@@ -10,7 +10,7 @@ pkg install -y git python3 python3-pip termux-api termux-widget termux-tools ter
 
 # 2. Clonar el repositorio libre-gallina (si no existe)
 if [ ! -d "libre-gallina" ]; then
-  git clone https://github.com/pwqw/libre-gallina.git
+  git clone https://github.com/pwqw/libre-gallina
 fi
 
 # 3. Navegar al directorio del repositorio
