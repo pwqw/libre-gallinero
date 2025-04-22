@@ -28,13 +28,16 @@
 #    VIN (5V)    -> VCC relays
 #    3V3         -> VCC DHT11
 
-import network
-import ntptime
+try:
+    import network # type: ignore
+    import ntptime # type: ignore
+    import machine # type: ignore
+    import dht # type: ignore
+except ImportError:
+    print("Error: Módulos de MicroPython no encontrados. Asegúrate de que estás ejecutando este script en un dispositivo compatible con MicroPython.")
 import time
-import machine
-import dht
-from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config, save_wifi_config
-from src.logic import compute_relay1_state, compute_relay2_state
+from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config
+from src.logic import relay_ponedoras_state, relay_pollitos_state
 from src.hotspot import hotspot_config_loop
 
 # Pines (ajusta según tu hardware)
