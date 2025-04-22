@@ -3,9 +3,9 @@ import ntptime
 import time
 import machine
 import dht
-import math
-from config import WIFI_SSID, WIFI_PASSWORD
-from solar import calc_sun_times, LATITUDE, LONGITUDE
+from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config, save_wifi_config
+from src.logic import compute_relay1_state, compute_relay2_state
+from src.hotspot import hotspot_config_loop
 
 # Pines (ajusta según tu hardware)
 RELAY1_PIN = 5  # D1 en NodeMCU
@@ -23,10 +23,15 @@ def connect_wifi():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
-        wlan.connect(WIFI_SSID, WIFI_PASSWORD)
-        while not wlan.isconnected():
+        config = load_wifi_config()
+        ssid = config['ssid'] if config else WIFI_SSID
+        password = config['password'] if config else WIFI_PASSWORD
+        wlan.connect(ssid, password)
+        timeout = 0
+        while not wlan.isconnected() and timeout < 15:
             time.sleep(1)
-    print('WiFi conectado:', wlan.ifconfig())
+            timeout += 1
+    return wlan.isconnected()
 
 # Sincronizar hora con NTP
 def sync_time():
@@ -81,7 +86,10 @@ def control_relay2():
 
 # Main loop
 def main():
-    connect_wifi()
+    if not connect_wifi():
+        print('No se pudo conectar a WiFi. Iniciando hotspot de configuración...')
+        hotspot_config_loop()
+        return
     if not sync_time():
         print('No se pudo sincronizar la hora')
         return
