@@ -1,3 +1,33 @@
+#  +---------------------------------------------------+
+#  |                                                   |
+#  |   NodeMCU ESP-12E (ESP8266)                       |
+#  |                                                   |
+#  |  [ ] = Pin usado                                  |
+#  |                                                   |
+#  |  [3V3]----+-------------------+                   |
+#  |           |                   |                   |
+#  |         [D5] (GPIO14) <--- DHT11 DATA             |
+#  |           |                   |                   |
+#  |         [D1] (GPIO5)  <--- Relay 1 IN             |
+#  |         [D2] (GPIO4)  <--- Relay 2 IN             |
+#  |           |                   |                   |
+#  |         [GND]----+-----------+---+                |
+#  |                  |           |   |                |
+#  |                Relay1      Relay2 DHT11 GND       |
+#  |                GND         GND   GND              |
+#  |                                                   |
+#  |         [VIN] (5V)  ---> Relays VCC               |
+#  |         [3V3]       ---> DHT11 VCC                |
+#  |                                                   |
+#  +---------------------------------------------------+
+#  Pines usados:
+#    D1 (GPIO5)  -> Relay 1 IN
+#    D2 (GPIO4)  -> Relay 2 IN
+#    D5 (GPIO14) -> DHT11 DATA
+#    GND         -> GND relays y DHT11
+#    VIN (5V)    -> VCC relays
+#    3V3         -> VCC DHT11
+
 import network
 import ntptime
 import time
