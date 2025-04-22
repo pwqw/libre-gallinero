@@ -12,9 +12,6 @@ cat <<EOF
 ╚════════════════════════════════════════╝
 EOF
 
-# 1. Ir al directorio de libre-gallinero
-cd "$HOME/libre-gallinero"
-
 # 2. Activar entorno virtual Python
 if [ -d "env" ]; then
   . env/bin/activate
@@ -50,13 +47,24 @@ esac
 export AMPY_PORT
 
 # 4. Sube recursivamente el contenido de src/ a la raíz de la placa
-ampy put -r src . && {
+if [ -d src ]; then
+  # Subir directorios vacíos primero
+  find src -type d | while read -r dir; do
+    remote_dir="${dir#src/}"
+    [ -z "$remote_dir" ] && continue
+    ampy mkdir "$remote_dir" 2>/dev/null || true
+  done
+  # Subir archivos
+  find src -type f | while read -r file; do
+    remote_file="${file#src/}"
+    ampy put "$file" "$remote_file"
+  done
   echo "✨ ¡Carga exitosa de src/ en la placa ESP8266! ✅"
   echo ""
   echo "📊 Iniciando monitor serie (115200 baudios)"
   echo "Para salir: presiona Ctrl-]"
   sleep 2
   python -m serial.tools.miniterm "${AMPY_PORT}" 115200
-} || {
-  echo "⛔ Error al grabar los archivos en la placa ⚠️"
-}
+else
+  echo "⛔ No se encontró el directorio src/ ⚠️"
+fi
