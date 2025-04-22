@@ -17,7 +17,12 @@ echo "\n📦 [1] Instalando dependencias necesarias... 🔧"
 pkg update -y
 pkg install -y root-repo
 pkg upgrade -y
-pkg install -y git python python-pip termux-api termux-tools pkg-config rust clang make
+pkg install -y \
+  git \
+  python python-pip \
+  termux-api termux-tools \
+  pkg-config rust clang make \
+  screen  # Para la conexión a la placa
 
 # 2. Clonar el repositorio libre-gallinero (si no existe)
 echo "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄"
