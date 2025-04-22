@@ -53,7 +53,7 @@ echo "\n\n🚀 [6] Activando el entorno virtual... ⚡"
 
 # 7. Asegurar que Rust está correctamente configurado
 echo "\n\n🦀 [7] Configurando Rust... 🔧"
-source $HOME/.cargo/env
+. $HOME/.cargo/env
 
 # 8. Instalar las dependencias del proyecto
 echo "\n\n📦 [8] Instalando dependencias del proyecto... 🔧"
