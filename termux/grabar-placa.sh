@@ -1,5 +1,15 @@
-# Script para grabar todo el código fuente de src/ en la raíz de la placa ESP8266 usando ampy
-set -e
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -e  # Hacer que el script falle si hay un error
+set -u  # Hacer que el script falle si se usa una variable no definida
+
+echo "
+╔════════════════════════════════════════╗
+║       🐔  LIBRE GALLINERO  🐔          ║
+║         GRABADOR DE PLACA              ║
+╚════════════════════════════════════════╝
+"
+
 
 # 0. Ir al directorio de libre-gallinero
 cd $HOME/libre-gallinero
@@ -8,7 +18,7 @@ git pull --rebase
 # 1. Confirmación para conectar la placa
 read -p "Conecta la placa ESP8266 y presiona 'S' para continuar, o cualquier otra tecla para cancelar: " confirmacion
 if [ "$confirmacion" != "S" ] && [ "$confirmacion" != "s" ]; then
-  echo "Cancelado por el usuario."
+  echo "❌ Cancelado por el usuario ❌"
   exit 0
 fi
 
@@ -23,14 +33,14 @@ for p in "${puertos[@]}"; do
 done
 
 if [ ${#puertos_disponibles[@]} -eq 0 ]; then
-  echo "No se encontraron puertos serie. Asegúrate de que la placa esté conectada."
+  echo "🚫 No se encontraron puertos serie. Asegúrate de que la placa esté conectada 🔌"
   exit 1
 fi
 
 # 3. Selección automática o manual del puerto
 if [ ${#puertos_disponibles[@]} -eq 1 ]; then
   AMPY_PORT="${puertos_disponibles[0]}"
-  echo "Puerto detectado automáticamente: $AMPY_PORT"
+  echo "🔍 Puerto detectado automáticamente: $AMPY_PORT ✅"
 else
   echo "Puertos serie detectados:"
   letras=(a b c d e f g h i j)
@@ -58,7 +68,7 @@ export AMPY_PORT
 ampy put -r src .
 
 if [ $? -eq 0 ]; then
-  echo "Carga exitosa de src/ en la placa ESP8266."
+  echo "✨ ¡Carga exitosa de src/ en la placa ESP8266! ✅"
 else
-  echo "Error al grabar los archivos en la placa."
+  echo "⛔ Error al grabar los archivos en la placa ⚠️"
 fi
