@@ -10,17 +10,8 @@ echo "
 ╚════════════════════════════════════════╝
 "
 
-# Dependencias mínimas
-for cmd in git python3 ampy screen; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "⚠️  '$cmd' no encontrado. Instálalo con: pkg install $cmd"
-    exit 1
-  fi
-done
-
 # 0. Ir al directorio de libre-gallinero
 cd $HOME/libre-gallinero
-git pull --rebase
 
 # 1. Confirmación para conectar la placa
 read -p "Conecta la placa ESP8266 y presiona 'S' para continuar, o cualquier otra tecla para cancelar: " confirmacion

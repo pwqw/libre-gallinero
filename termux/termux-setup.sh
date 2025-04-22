@@ -69,12 +69,12 @@ export PATH="$PATH:$PREFIX/bin:$HOME/.cargo/bin"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 8. Crear el acceso directo del script grabar-placa.sh para Termux-Widget
+# 8. Crear el acceso directo del script shortcut.sh para Termux-Widget
 echo "\n\n[8] Creando acceso directo para Termux-Widget..."
 if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
-cp -f $HOME/libre-gallinero/termux/grabar-placa.sh "$HOME/.shortcuts/Grabar placa"
+cp -f $HOME/libre-gallinero/termux/shortcut.sh "$HOME/.shortcuts/Grabar placa"
 chmod +x "$HOME/.shortcuts/Grabar placa"
 echo "\n\n🐔  ¡Listo! Puedes usar el widget 'Grabar placa' en Termux-Widget. 🐔\n"
 
