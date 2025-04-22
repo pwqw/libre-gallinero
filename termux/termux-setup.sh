@@ -1,5 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
-
+# -*- coding: utf-8 -*-
 echo "
 ╔════════════════════════════════════════╗
 ║       🐔  LIBRE GALLINERO  🐔          ║
@@ -43,7 +42,7 @@ fi
 
 # 6. Activar el entorno virtual
 echo "\n\n🚀 [6] Activando el entorno virtual... ⚡"
-source env/bin/activate
+. env/bin/activate
 
 # 7. Instalar las dependencias del proyecto
 echo "\n\n📦 [7] Instalando dependencias del proyecto... 🔧"

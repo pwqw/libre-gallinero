@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+# -*- coding: utf-8 -*-
 
 set -e  # Hacer que el script falle si hay un error
 set -u  # Hacer que el script falle si se usa una variable no definida
@@ -22,7 +22,15 @@ if [ "$confirmacion" != "S" ] && [ "$confirmacion" != "s" ]; then
   exit 0
 fi
 
-# 2. Buscar puertos serie disponibles en Android/Termux
+# 2. Source python env
+if [ -d "env" ]; then
+  . env/bin/activate
+else
+  echo "⚠️ No se encontró el entorno virtual. Asegúrate de que esté creado y activado. ⚠️"
+  exit 1
+fi
+
+# 3. Buscar puertos serie disponibles en Android/Termux
 # Generalmente son /dev/ttyUSB*, /dev/ttyACM*, /dev/ttyS*, /dev/tty.*
 puertos=(/dev/ttyUSB* /dev/ttyACM* /dev/ttyS* /dev/tty.*)
 puertos_disponibles=()
@@ -37,7 +45,7 @@ if [ ${#puertos_disponibles[@]} -eq 0 ]; then
   exit 1
 fi
 
-# 3. Selección automática o manual del puerto
+# 4. Selección automática o manual del puerto
 if [ ${#puertos_disponibles[@]} -eq 1 ]; then
   AMPY_PORT="${puertos_disponibles[0]}"
   echo "🔍 Puerto detectado automáticamente: $AMPY_PORT ✅"
@@ -64,7 +72,7 @@ fi
 
 export AMPY_PORT
 
-# 4. Sube recursivamente el contenido de src/ a la raíz de la placa
+# 5. Sube recursivamente el contenido de src/ a la raíz de la placa
 ampy put -r src .
 
 if [ $? -eq 0 ]; then
