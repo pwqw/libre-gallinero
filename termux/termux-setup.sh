@@ -17,7 +17,17 @@ echo "\n📦 [1] Instalando dependencias necesarias... 🔧"
 pkg update -y
 pkg install -y root-repo
 pkg upgrade -y
-pkg install -y git python python-pip termux-api termux-tools 
+pkg install -y git python python-pip termux-api termux-tools pkg-config
+
+# 1.1 Instalar rustup y toolchain estable
+echo "\n\n🦀 [1.1] Instalando Rust toolchain... 🔧"
+if ! command -v rustup &> /dev/null; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+fi
+export PATH="$HOME/.cargo/bin:$PATH"
+source $HOME/.cargo/env
+rustup toolchain install stable
+rustup default stable
 
 # 2. Clonar el repositorio libre-gallinero (si no existe)
 echo "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄"
@@ -44,13 +54,18 @@ fi
 echo "\n\n🚀 [6] Activando el entorno virtual... ⚡"
 . env/bin/activate
 
-# 7. Instalar las dependencias del proyecto
-echo "\n\n📦 [7] Instalando dependencias del proyecto... 🔧"
+# 7. Asegurar que Rust está correctamente configurado
+echo "\n\n🦀 [7] Configurando Rust... 🔧"
+source $HOME/.cargo/env
+
+# 8. Instalar las dependencias del proyecto
+echo "\n\n📦 [8] Instalando dependencias del proyecto... 🔧"
+export PATH="$HOME/.cargo/bin:$PATH"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 8. Crear el acceso directo del script grabar-placa.sh para Termux-Widget
-echo "\n\n[8] Creando acceso directo para Termux-Widget..."
+# 9. Crear el acceso directo del script grabar-placa.sh para Termux-Widget
+echo "\n\n[9] Creando acceso directo para Termux-Widget..."
 if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
