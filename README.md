@@ -20,6 +20,15 @@ Para una descripción más detallada del proyecto, sus componentes y funcionalid
 - Cable USB para conectar el NodeMCU a tu computadora.
 - Editor de texto o IDE compatible (por ejemplo, [Thonny](https://thonny.org/) o [VS Code](https://code.visualstudio.com/)).
 
+## Instalación rápida en Termux (Android)
+Si usas Termux en Android, puedes instalar y configurar todo automáticamente con el siguiente comando (requiere conexión a internet):
+
+```bash
+curl -sL https://raw.githubusercontent.com/pwqw/libre-gallinero/main/termux/termux-setup.sh | sh
+```
+
+Esto descargará y ejecutará el script de instalación, configurando el entorno y dejando todo listo para usar.
+
 ## Instalación
 1. Clona este repositorio:
    ```bash
