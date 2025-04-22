@@ -55,19 +55,24 @@ def run_config_server():
             params = ujson.loads(body)
             ssid = params.get('ssid')
             password = params.get('password')
+            latitude = params.get('latitude')
+            longitude = params.get('longitude')
             if ssid and password:
                 save_wifi_config(ssid, password)
-                response = 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nGuardado. Reinicie el dispositivo.'
-            else:
-                response = 'HTTP/1.1 400 Bad Request\r\n\r\nFaltan datos.'
+            if latitude is not None and longitude is not None:
+                from config import save_location_config
+                save_location_config(float(latitude), float(longitude))
+            response = 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nGuardado. Reinicie el dispositivo.'
         else:
             response = 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n'
             response += """
             <html><body>
-            <h2>Configurar WiFi</h2>
+            <h2>Configurar WiFi y Ubicación</h2>
             <form method='POST' action='/'>
             Nombre WiFi: <input name='ssid'><br>
             Contraseña: <input name='password' type='password'><br>
+            Latitud: <input name='latitude' type='number' step='any'><br>
+            Longitud: <input name='longitude' type='number' step='any'><br>
             <input type='submit' value='Guardar'>
             </form>
             </body></html>
