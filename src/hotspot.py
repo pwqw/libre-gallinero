@@ -1,10 +1,13 @@
 # hotspot.py
 # Módulo para el hotspot de configuración WiFi en NodeMCU (MicroPython)
 
-import network
-import socket
-import ujson
-import machine
+try:
+    import network # type: ignore[import]
+    import socket
+    import ujson # type: ignore[import]
+except ImportError:
+    print("Error: Este script debe ejecutarse en un entorno MicroPython.")
+
 
 AP_SSID = 'Gallinero-Setup'
 AP_PASSWORD = 'gallinas123'
