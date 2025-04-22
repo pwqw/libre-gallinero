@@ -44,10 +44,23 @@ fi
 echo "\n\n🚀 [6] Activando el entorno virtual... ⚡"
 . env/bin/activate
 
+# Ensure rustc and cargo are in PATH
+export PATH="$PATH:$PREFIX/bin:$HOME/.cargo/bin"
+echo "🔍 Verificando rustc y cargo en el PATH..."
+if ! command -v rustc >/dev/null 2>&1; then
+  echo "Error: rustc no encontrado en PATH"
+  exit 1
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "Error: cargo no encontrado en PATH"
+  exit 1
+fi
+echo "✅ rustc y cargo encontrados"
+
 # 7. Instalar las dependencias del proyecto
 echo "\n\n📦 [7] Instalando dependencias del proyecto... 🔧"
 # Asegurarnos de que rustc y cargo estén en el PATH
-export PATH="$PREFIX/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$PATH:$PREFIX/bin:$HOME/.cargo/bin"
 pip install --upgrade pip
 pip install -r requirements.txt
 
