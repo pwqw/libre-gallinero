@@ -77,7 +77,7 @@ ampy put -r src . && {
   echo "📊 Iniciando monitor serie (115200 baudios)"
   echo "Para salir: presiona Ctrl+A seguido de Ctrl+\\"
   sleep 2
-  screen "$AMPY_PORT" 115200
+  screen -T vt100 "$AMPY_PORT" 115200
 } || {
   echo "⛔ Error al grabar los archivos en la placa ⚠️"
 }
