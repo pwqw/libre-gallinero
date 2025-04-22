@@ -1,8 +1,8 @@
 # Script para grabar todo el código fuente de src/ en la raíz de la placa ESP8266 usando ampy
 set -e
 
-# 0. Ir al directorio de libre-gallina
-cd $HOME/libre-gallina
+# 0. Ir al directorio de libre-gallinero
+cd $HOME/libre-gallinero
 git pull --rebase
 
 # 1. Confirmación para conectar la placa
