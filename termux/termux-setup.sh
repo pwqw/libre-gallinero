@@ -17,17 +17,14 @@ echo "\n📦 [1] Instalando dependencias necesarias... 🔧"
 pkg update -y
 pkg install -y root-repo
 pkg upgrade -y
-pkg install -y git python python-pip termux-api termux-tools pkg-config
+pkg install -y git python python-pip termux-api termux-tools pkg-config rust
 
-# 1.1 Instalar rustup y toolchain estable
+# 1.1 Instalar Rust toolchain usando pkg (no rustup)
 echo "\n\n🦀 [1.1] Instalando Rust toolchain... 🔧"
-if ! command -v rustup &> /dev/null; then
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+if [ "$(id -u)" -eq 0 ]; then
+  echo "[ADVERTENCIA] No uses sudo ni root en Termux. Ejecuta este script como usuario normal."
+  exit 1
 fi
-export PATH="$HOME/.cargo/bin:$PATH"
-source $HOME/.cargo/env
-rustup toolchain install stable
-rustup default stable
 
 # 2. Clonar el repositorio libre-gallinero (si no existe)
 echo "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄"
