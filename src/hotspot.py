@@ -18,6 +18,32 @@ AP_DNS = '192.168.4.1'
 
 CONFIG_FILE = 'wifi_config.json'
 
+# función para decodificar cadenas URL-encoded (porcentaje y +)
+try:
+    import urllib.parse
+    def url_decode(s):
+        return urllib.parse.unquote_plus(s)
+except:
+    def url_decode(s):
+        res = ''
+        i = 0
+        while i < len(s):
+            c = s[i]
+            if c == '%':
+                try:
+                    res += chr(int(s[i+1:i+3], 16))
+                    i += 3
+                except:
+                    res += '%'
+                    i += 1
+            elif c == '+':
+                res += ' '
+                i += 1
+            else:
+                res += c
+                i += 1
+        return res
+
 
 def start_ap():
     ap = network.WLAN(network.AP_IF)
@@ -31,9 +57,9 @@ def start_ap():
     return ap
 
 
-def save_wifi_config(ssid, password):
+def save_wifi_config(ssid, password, hidden=False):
     with open(CONFIG_FILE, 'w') as f:
-        ujson.dump({'ssid': ssid, 'password': password}, f)
+        ujson.dump({'ssid': ssid, 'password': password, 'hidden': hidden}, f)
 
 
 def load_wifi_config():
@@ -45,51 +71,96 @@ def load_wifi_config():
 
 
 def run_config_server():
+    print('[HOTSPOT] run_config_server: INICIO')
     # Escanear redes WiFi disponibles (5 segundos)
     sta_if = network.WLAN(network.STA_IF)
     sta_if.active(True)
     import time
-    print('Escaneando redes WiFi...')
+    print('[HOTSPOT] Escaneando redes WiFi...')
     scan_results = []
     t0 = time.ticks_ms()
     while time.ticks_diff(time.ticks_ms(), t0) < 5000:
         try:
             scan_results = sta_if.scan()
+            print('[HOTSPOT] scan_results:', scan_results)
             if scan_results:
                 break
         except Exception as e:
-            print('Error escaneando WiFi:', e)
+            print('[HOTSPOT] Error escaneando WiFi:', e)
         time.sleep(1)
     ssids = []
     for net in scan_results:
         ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else str(net[0])
+        print('[HOTSPOT] SSID encontrado:', ssid)
         if ssid and ssid not in ssids:
             ssids.append(ssid)
+    print('[HOTSPOT] Lista de SSIDs:', ssids)
     addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(addr)
     s.listen(1)
-    print('Servidor de configuración corriendo en http://192.168.4.1/')
+    print('[HOTSPOT] Servidor de configuración corriendo en http://192.168.4.1/')
     while True:
+        print('[HOTSPOT] Esperando conexión de cliente...')
         cl, addr = s.accept()
+        print('[HOTSPOT] Cliente conectado desde:', addr)
         try:
-            req = cl.recv(1024)
+            # Leer petición completa (incluye headers y body)
+            req = cl.recv(2048)
+            print('[HOTSPOT] Datos recibidos:', req)
             req = req.decode('utf-8')
+            print('[HOTSPOT] Petición decodificada:', req)
             if 'POST /' in req:
-                body = req.split('\r\n\r\n', 1)[1]
-                params = ujson.loads(body)
+                print('[HOTSPOT] Petición POST recibida')
+                # Separar headers y body, leer completo según Content-Length
+                parts = req.split('\r\n\r\n', 1)
+                headers = parts[0]
+                body = parts[1] if len(parts) > 1 else ''
+                # Obtener longitud de cuerpo
+                clen = 0
+                for h in headers.split('\r\n'):
+                    if h.lower().startswith('content-length:'):
+                        try:
+                            clen = int(h.split(':', 1)[1].strip())
+                        except:
+                            clen = 0
+                        break
+                # Leer datos adicionales si el body es parcial
+                while len(body) < clen:
+                    more = cl.recv(1024)
+                    if not more:
+                        break
+                    try:
+                        body += more.decode('utf-8')
+                    except:
+                        body += more.decode('latin1')
+                print('[HOTSPOT] Body POST completo:', body)
+                # Parsear application/x-www-form-urlencoded
+                params = {}
+                for pair in body.split('&'):
+                    if '=' in pair:
+                        k_enc, v_enc = pair.split('=', 1)
+                        k = url_decode(k_enc)
+                        v = url_decode(v_enc)
+                        params[k] = v
+                print('[HOTSPOT] POST params:', params)
                 ssid = params.get('ssid')
                 password = params.get('password')
+                hidden = params.get('hidden') == 'on'
                 latitude = params.get('latitude')
                 longitude = params.get('longitude')
+                print('[HOTSPOT] ssid:', ssid, 'password:', password, 'latitude:', latitude, 'longitude:', longitude)
                 if ssid and password:
-                    save_wifi_config(ssid, password)
-                if latitude is not None and longitude is not None:
+                    print('[HOTSPOT] Guardando configuración WiFi...')
+                    save_wifi_config(ssid, password, hidden)
+                if latitude is not None and longitude is not None and latitude != '' and longitude != '':
+                    print('[HOTSPOT] Guardando ubicación...')
                     from config import save_location_config
                     save_location_config(float(latitude), float(longitude))
                 response = 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nGuardado. Reinicie el dispositivo.'
             else:
+                print('[HOTSPOT] Petición GET recibida')
                 html = [
                     'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n',
                     '<html><head>',
@@ -106,11 +177,12 @@ def run_config_server():
                     for i, ssid in enumerate(ssids):
                         html.append("<input type='radio' name='ssid_radio' value='{}' id='ssid_{}' onclick=\"document.getElementById('manual_ssid').style.display='none';document.getElementById('manual_ssid').required=false;\"><label for='ssid_{}'>{}</label><br>".format(ssid, i, i, ssid))
                     html.append("<input type='radio' name='ssid_radio' value='' id='ssid_otro' onclick='toggleManualSSID()'><label for='ssid_otro'>Otro (ingresar manualmente)</label><br>")
-                    html.append("<input name='ssid' id='manual_ssid' type='text' placeholder='Nombre WiFi' style='display:none;'>")
+                    html.append("<input name='ssid' id='manual_ssid' type='text' placeholder='Nombre WiFi' style='display:none;'><br>")
                 else:
-                    html.append("<input name='ssid' id='manual_ssid' type='text' placeholder='Nombre WiFi' required>")
+                    html.append("<input name='ssid' id='manual_ssid' type='text' placeholder='Nombre WiFi' required><br>")
                 html.append('</div>')
                 html.append("Contraseña:<br><input name='password' type='password' required><br>")
+                html.append("<input type='checkbox' name='hidden' id='hidden'><label for='hidden'>Red oculta (SSID oculto)</label><br>")
                 html.append('</fieldset>')
                 html.append('<fieldset><legend>Ubicación (opcional)</legend>')
                 html.append("Latitud:<br><input name='latitude' type='number' step='any'><br>")
@@ -128,10 +200,12 @@ def run_config_server():
             for i in range(0, len(response), chunk_size):
                 cl.send(response[i:i+chunk_size])
                 _t.sleep_ms(10)
+            print('[HOTSPOT] Respuesta enviada al cliente')
         except Exception as e:
-            print('Error en la conexión:', e)
+            print('[HOTSPOT] Error en la conexión:', e)
         finally:
             cl.close()
+            print('[HOTSPOT] Cliente desconectado')
 
 
 def hotspot_config_loop():
