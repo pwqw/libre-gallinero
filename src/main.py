@@ -62,8 +62,13 @@ def connect_wifi():
         if config and 'ssid' in config and 'password' in config:
             ssid = config['ssid']
             password = config['password']
-            print(f'[WIFI] Usando SSID: {ssid}')
-            wlan.connect(ssid, password)
+            hidden = config.get('hidden', False)
+            print(f'[WIFI] Usando SSID: {ssid} (oculta={hidden})')
+            try:
+                wlan.connect(ssid, password, hidden=hidden)
+            except TypeError:
+                # Para compatibilidad con firmwares que no soportan 'hidden'
+                wlan.connect(ssid, password)
             timeout = 0
             while not wlan.isconnected() and timeout < 15:
                 print(f'[WIFI] Esperando conexión... ({timeout+1}/15)')

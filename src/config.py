@@ -14,9 +14,9 @@ def load_wifi_config():
     except Exception:
         return None
 
-def save_wifi_config(ssid, password):
+def save_wifi_config(ssid, password, hidden=False):
     with open('wifi_config.json', 'w') as f:
-        ujson.dump({'ssid': ssid, 'password': password}, f)
+        ujson.dump({'ssid': ssid, 'password': password, 'hidden': hidden}, f)
 
 def load_location_config():
     try:
