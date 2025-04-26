@@ -36,7 +36,7 @@ try:
 except ImportError:
     print("Error: Módulos de MicroPython no encontrados. Asegúrate de que estás ejecutando este script en un dispositivo compatible con MicroPython.")
 import time
-from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config, load_location_config
+from config import load_wifi_config, load_location_config
 from logic import relay_ponedoras_state, relay_pollitos_state
 from hotspot import hotspot_config_loop
 from solar import calc_sun_times
@@ -59,15 +59,18 @@ def connect_wifi():
     wlan.active(True)
     if not wlan.isconnected():
         config = load_wifi_config()
-        ssid = config['ssid'] if config else WIFI_SSID
-        password = config['password'] if config else WIFI_PASSWORD
-        print(f'[WIFI] Usando SSID: {ssid}')
-        wlan.connect(ssid, password)
-        timeout = 0
-        while not wlan.isconnected() and timeout < 15:
-            print(f'[WIFI] Esperando conexión... ({timeout+1}/15)')
-            time.sleep(1)
-            timeout += 1
+        if config and 'ssid' in config and 'password' in config:
+            ssid = config['ssid']
+            password = config['password']
+            print(f'[WIFI] Usando SSID: {ssid}')
+            wlan.connect(ssid, password)
+            timeout = 0
+            while not wlan.isconnected() and timeout < 15:
+                print(f'[WIFI] Esperando conexión... ({timeout+1}/15)')
+                time.sleep(1)
+                timeout += 1
+        else:
+            print('[WIFI] No hay configuración WiFi guardada.')
     if wlan.isconnected():
         print('[WIFI] Conectado!')
     else:

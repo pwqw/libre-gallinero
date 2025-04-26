@@ -3,10 +3,7 @@ try:
 except ImportError:
     import json as ujson
 
-# Configuración WiFi para NodeMCU
-WIFI_SSID = "TU_SSID"
-WIFI_PASSWORD = "TU_PASSWORD"
-
+# Configuración por defecto de ubicación para NodeMCU
 LATITUDE = -31.4167  # Valor por defecto (Córdoba, Argentina)
 LONGITUDE = -64.1833  # Valor por defecto (Córdoba, Argentina)
 
