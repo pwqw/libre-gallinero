@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-echo "
+printf "
 ╔════════════════════════════════════════╗
 ║       🐔  LIBRE GALLINERO  🐔          ║
 ║            CONFIGURACIÓN               ║
 ╚════════════════════════════════════════╝
-"
+\n"
 
 set -e  # Hacer que el script falle si hay un error
 set -u  # Hacer que el script falle si se usa una variable no definida
 
 # 0. Iniciar
-cd $HOME
+cd "$HOME"
 
 # 1. Instalar las dependencias necesarias
-echo "\n📦 [1] Instalando dependencias necesarias... 🔧"
+printf "\n📦 [1] Instalando dependencias necesarias... 🔧\n"
 pkg update -y
 pkg install -y root-repo
 pkg upgrade -y
@@ -22,36 +22,36 @@ pkg install -y \
   python python-pip \
   termux-api termux-tools \
   pkg-config rust clang make \
-  screen  # Para la conexión a la placa
+  screen
 
 # 2. Clonar el repositorio libre-gallinero (si no existe)
-echo "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄"
-if [ ! -d "libre-gallinero" ]; then
-  git clone https://github.com/pwqw/libre-gallinero.git
+printf "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄\n"
+if [ ! -d "$HOME/libre-gallinero" ]; then
+  git clone https://github.com/pwqw/libre-gallinero.git "$HOME/libre-gallinero"
 fi
 
 # 3. Navegar al directorio del repositorio
-echo "\n\n📂 [3] Navegando al directorio del repositorio... 🚀"
-cd libre-gallinero
+printf "\n\n📂 [3] Navegando al directorio del repositorio... 🚀\n"
+cd "$HOME/libre-gallinero"
 
 # 4. Actualizar el repositorio (forzado)
-echo "\n\n🔄 [4] Actualizando el repositorio (forzado)... ⚡"
+printf "\n\n🔄 [4] Actualizando el repositorio (forzado)... ⚡\n"
 git fetch --all
 git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 
 # 5. Crear el entorno virtual (si no existe)
-echo "\n\n🏗️  [5] Creando el entorno virtual (si no existe)... 🔨"
+printf "\n\n🏗️  [5] Creando el entorno virtual (si no existe)... 🔨\n"
 if [ ! -d "env" ]; then
   python -m venv env
 fi
 
 # 6. Activar el entorno virtual
-echo "\n\n🚀 [6] Activando el entorno virtual... ⚡"
-. env/bin/activate
+printf "\n\n🚀 [6] Activando el entorno virtual... ⚡\n"
+. "$HOME/libre-gallinero/env/bin/activate"
 
-# Ensure rustc and cargo are in PATH
+# 7. Asegurarnos de que rustc y cargo estén en el PATH
+printf "\n\n🔍 [7] Verificando rustc y cargo en el PATH...\n"
 export PATH="$PATH:$PREFIX/bin:$HOME/.cargo/bin"
-echo "🔍 Verificando rustc y cargo en el PATH..."
 if ! command -v rustc >/dev/null 2>&1; then
   echo "Error: rustc no encontrado en PATH"
   exit 1
@@ -62,19 +62,17 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 echo "✅ rustc y cargo encontrados"
 
-# 7. Instalar las dependencias del proyecto
-echo "\n\n📦 [7] Instalando dependencias del proyecto... 🔧"
-# Asegurarnos de que rustc y cargo estén en el PATH
-export PATH="$PATH:$PREFIX/bin:$HOME/.cargo/bin"
+# 8. Instalar las dependencias del proyecto
+printf "\n\n📦 [8] Instalando dependencias del proyecto... 🔧\n"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 8. Crear el acceso directo del script shortcut.sh para Termux-Widget
-echo "\n\n[8] Creando acceso directo para Termux-Widget..."
+# 9. Crear el acceso directo del script shortcut.sh para Termux-Widget
+printf "\n\n[9] Creando acceso directo para Termux-Widget...\n"
 if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
-cp -f $HOME/libre-gallinero/termux/shortcut.sh "$HOME/.shortcuts/Grabar placa"
+cp -f "$HOME/libre-gallinero/termux/shortcut.sh" "$HOME/.shortcuts/Grabar placa"
 chmod +x "$HOME/.shortcuts/Grabar placa"
-echo "\n\n🐔  ¡Listo! Puedes usar el widget 'Grabar placa' en Termux-Widget. 🐔\n"
+printf "\n\n🐔  ¡Listo! Puedes usar el widget 'Grabar placa' en Termux-Widget. 🐔\n"
 
