@@ -63,7 +63,6 @@ if [ -d src ]; then
   echo ""
   echo "📊 Iniciando monitor serie (python serial.tools.miniterm 115200 baudios)"
   echo "Para salir: presiona Ctrl-]"
-  sleep 2
   python -m serial.tools.miniterm "${AMPY_PORT}" 115200
 else
   echo "⛔ No se encontró el directorio src/ ⚠️"
