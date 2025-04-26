@@ -11,8 +11,11 @@ LATITUDE = -31.4167  # Valor por defecto (Córdoba, Argentina)
 LONGITUDE = -64.1833  # Valor por defecto (Córdoba, Argentina)
 
 def load_wifi_config():
-    with open('wifi_config.json', 'r') as f:
-        return ujson.load(f)
+    try:
+        with open('wifi_config.json', 'r') as f:
+            return ujson.load(f)
+    except Exception:
+        return None
 
 def save_wifi_config(ssid, password):
     with open('wifi_config.json', 'w') as f:

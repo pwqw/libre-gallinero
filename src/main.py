@@ -36,10 +36,9 @@ try:
 except ImportError:
     print("Error: Módulos de MicroPython no encontrados. Asegúrate de que estás ejecutando este script en un dispositivo compatible con MicroPython.")
 import time
-from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config
+from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config, load_location_config
 from logic import relay_ponedoras_state, relay_pollitos_state
 from hotspot import hotspot_config_loop
-from config import load_location_config
 from solar import calc_sun_times
 
 # Pines (ajusta según tu hardware)
