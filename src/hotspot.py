@@ -72,13 +72,28 @@ def run_config_server():
             else:
                 response = 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n'
                 response += """
-                <html><body>
+                <html>
+                <head>
+                <meta charset='utf-8'>
+                <meta name='viewport' content='width=device-width, initial-scale=1'>
+                <style>
+                body { font-family: sans-serif; padding: 1em; background: #fff; }
+                form { max-width: 320px; margin: auto; }
+                input, button {
+                  width: 100%;
+                  font-size: 1em;
+                  margin: 0.5em 0;
+                  padding: 0.7em;
+                }
+                </style>
+                </head>
+                <body>
                 <h2>Configurar WiFi y Ubicación</h2>
                 <form method='POST' action='/'>
-                Nombre WiFi: <input name='ssid'><br>
-                Contraseña: <input name='password' type='password'><br>
-                Latitud: <input name='latitude' type='number' step='any'><br>
-                Longitud: <input name='longitude' type='number' step='any'><br>
+                Nombre WiFi:<br><input name='ssid' type='text' required><br>
+                Contraseña:<br><input name='password' type='password' required><br>
+                Latitud:<br><input name='latitude' type='number' step='any' required><br>
+                Longitud:<br><input name='longitude' type='number' step='any' required><br>
                 <input type='submit' value='Guardar'>
                 </form>
                 </body></html>
