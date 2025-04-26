@@ -37,10 +37,10 @@ except ImportError:
     print("Error: Módulos de MicroPython no encontrados. Asegúrate de que estás ejecutando este script en un dispositivo compatible con MicroPython.")
 import time
 from config import WIFI_SSID, WIFI_PASSWORD, load_wifi_config
-from src.logic import relay_ponedoras_state, relay_pollitos_state
-from src.hotspot import hotspot_config_loop
-from src.config import load_location_config
-from src.solar import calc_sun_times
+from logic import relay_ponedoras_state, relay_pollitos_state
+from hotspot import hotspot_config_loop
+from config import load_location_config
+from solar import calc_sun_times
 
 # Pines (ajusta según tu hardware)
 RELAY1_PIN = 5  # D1 en NodeMCU
@@ -55,27 +55,38 @@ dht_sensor = dht.DHT22(machine.Pin(DHT_PIN))
 
 # Función para conectar a WiFi
 def connect_wifi():
+    print('[WIFI] Intentando conectar...')
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
         config = load_wifi_config()
         ssid = config['ssid'] if config else WIFI_SSID
         password = config['password'] if config else WIFI_PASSWORD
+        print(f'[WIFI] Usando SSID: {ssid}')
         wlan.connect(ssid, password)
         timeout = 0
         while not wlan.isconnected() and timeout < 15:
+            print(f'[WIFI] Esperando conexión... ({timeout+1}/15)')
             time.sleep(1)
             timeout += 1
+    if wlan.isconnected():
+        print('[WIFI] Conectado!')
+    else:
+        print('[WIFI] No se pudo conectar.')
     return wlan.isconnected()
 
 # Sincronizar hora con NTP
 def sync_time():
-    for _ in range(5):
+    print('[NTP] Sincronizando hora con NTP...')
+    for intento in range(5):
         try:
             ntptime.settime()
+            print('[NTP] Sincronización exitosa.')
             return True
-        except:
+        except Exception as e:
+            print(f'[NTP] Fallo intento {intento+1}/5: {e}')
             time.sleep(2)
+    print('[NTP] No se pudo sincronizar la hora.')
     return False
 
 # Obtener hora local ajustada por zona horaria
@@ -86,6 +97,7 @@ def get_local_time():
     longitude = location.get('longitude', -60)
     tz_offset = int(round(longitude / 15))  # Por defecto, negativo en el hemisferio oeste
     hour = (tm[3] + tz_offset) % 24
+    print(f'[TIME] Hora local: {tm[0]}-{tm[1]:02d}-{tm[2]:02d} {hour:02d}:{tm[4]:02d} (offset {tz_offset})')
     return tm[0], tm[1], tm[2], hour, tm[4]  # año, mes, día, hora local, minuto
 
 # Controlar relay ponedoras según lógica solar y ubicación
@@ -95,6 +107,7 @@ def control_relay_ponedoras():
     latitude = location.get('latitude', -32.5)
     longitude = location.get('longitude', -60)
     # Amanecer y atardecer de verano (21 de diciembre)
+    print(f'[RELAY1] Ubicación: lat={latitude}, lon={longitude}')
     sunrise_summer, sunset_summer = calc_sun_times(year, 12, 21, latitude, longitude)
     # Amanecer y atardecer de la fecha actual
     sunrise_today, sunset_today = calc_sun_times(year, month, day, latitude, longitude)
@@ -104,26 +117,32 @@ def control_relay_ponedoras():
     sunrise_today_min = sunrise_today[0] * 60 + sunrise_today[1]
     sunset_today_min = sunset_today[0] * 60 + sunset_today[1]
     sunset_summer_min = sunset_summer[0] * 60 + sunset_summer[1]
-    relay1.value(relay_ponedoras_state(now_min, sunrise_summer_min, sunrise_today_min, sunset_today_min, sunset_summer_min))
+    estado = relay_ponedoras_state(now_min, sunrise_summer_min, sunrise_today_min, sunset_today_min, sunset_summer_min)
+    print(f'[RELAY1] now={now_min} min, sunrise_today={sunrise_today_min}, sunset_today={sunset_today_min}, estado={estado}')
+    relay1.value(estado)
 
 # Controlar relay pollitos según temperatura
 def control_relay_pollitos():
     try:
         dht_sensor.measure()
         temp = dht_sensor.temperature()
-        relay2.value(relay_pollitos_state(temp))
+        estado = relay_pollitos_state(temp)
+        print(f'[RELAY2] Temperatura={temp}°C, estado={estado}')
+        relay2.value(estado)
     except Exception as e:
-        print('Error leyendo DHT11:', e)
+        print('[RELAY2] Error leyendo DHT11:', e)
 
 # Main loop
 def main():
+    print('[MAIN] Iniciando script principal...')
     if not connect_wifi():
-        print('No se pudo conectar a WiFi. Iniciando hotspot de configuración...')
+        print('[MAIN] No se pudo conectar a WiFi. Iniciando hotspot de configuración...')
         hotspot_config_loop()
         return
     if not sync_time():
-        print('No se pudo sincronizar la hora')
+        print('[MAIN] No se pudo sincronizar la hora')
         return
+    print('[MAIN] Entrando en bucle principal.')
     while True:
         control_relay_ponedoras()
         control_relay_pollitos()
