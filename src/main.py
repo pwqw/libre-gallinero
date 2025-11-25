@@ -136,34 +136,71 @@ def start_hotspot(cfg):
 
 # === WIFI + NTP ===
 def connect_wifi(cfg):
-    """Conecta WiFi"""
-    print('[main] Conectando WiFi...')
+    """
+    Conecta WiFi siguiendo lógica:
+    1. Busca red por SSID
+    2. Intenta conectar con password
+    3. Si falla, retorna False (main.py creará hotspot)
+    """
+    print('[main] === Iniciando conexión WiFi ===')
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
 
-    if not wlan.isconnected():
-        ssid = cfg['WIFI_SSID']
-        pw = cfg['WIFI_PASSWORD']
-        hidden = cfg['WIFI_HIDDEN'].lower() == 'true'
-
-        try:
-            if hidden:
-                wlan.connect(ssid, pw, -1)
-            else:
-                wlan.connect(ssid, pw)
-        except TypeError:
-            wlan.connect(ssid, pw)
-
-        timeout = 0
-        while not wlan.isconnected() and timeout < 15:
-            time.sleep(1)
-            timeout += 1
-
     if wlan.isconnected():
-        print('[main] WiFi OK:', wlan.ifconfig()[0])
+        print('[main] WiFi ya conectado:', wlan.ifconfig()[0])
         return True
 
-    print('[main] WiFi FAIL')
+    ssid = cfg['WIFI_SSID']
+    pw = cfg['WIFI_PASSWORD']
+    hidden = cfg.get('WIFI_HIDDEN', 'false').lower() == 'true'
+
+    print(f'[main] Buscando red: {ssid}')
+    
+    # Escanear redes disponibles para verificar que existe
+    print('[main] Escaneando redes...')
+    networks = wlan.scan()
+    found = False
+    for net in networks:
+        net_ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]
+        if net_ssid == ssid:
+            found = True
+            print(f'[main] ✓ Red encontrada: {ssid}')
+            break
+    
+    if not found and not hidden:
+        print(f'[main] ⚠ Red no encontrada en escaneo: {ssid}')
+        print('[main] Intentando conexión directa (puede ser red oculta)...')
+
+    # Intentar conectar
+    print(f'[main] Intentando conectar a {ssid}...')
+    try:
+        if hidden:
+            wlan.connect(ssid, pw, -1)
+        else:
+            wlan.connect(ssid, pw)
+    except TypeError:
+        wlan.connect(ssid, pw)
+    except Exception as e:
+        print(f'[main] Error al conectar: {e}')
+        return False
+
+    # Esperar conexión (timeout 15s)
+    timeout = 0
+    while not wlan.isconnected() and timeout < 15:
+        time.sleep(1)
+        timeout += 1
+        if timeout % 3 == 0:
+            print(f'[main] Esperando conexión... ({timeout}/15s)')
+
+    if wlan.isconnected():
+        ip = wlan.ifconfig()[0]
+        print(f'[main] ✓ WiFi conectado: {ip}')
+        print(f'[main] WebREPL: ws://{ip}:8266')
+        print('[main] === Conexión WiFi exitosa ===')
+        return True
+
+    print(f'[main] ✗ WiFi FAIL - No se pudo conectar a {ssid}')
+    print('[main] === Fallo de conexión WiFi ===')
     return False
 
 def sync_ntp():

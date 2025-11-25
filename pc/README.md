@@ -145,12 +145,12 @@ python3 tools/deploy_usb.py
 ### Archivo `.env` (Opcional)
 
 ```bash
-# WiFi del ESP8266
+# WiFi del ESP8266 (REQUERIDO para setup mínimo)
 WIFI_SSID="tu_wifi"
 WIFI_PASSWORD="tu_password"
 
 # WebREPL
-WEBREPL_IP=192.168.1.123      # IP del ESP8266
+WEBREPL_IP=192.168.1.123      # IP del ESP8266 (opcional - autodiscovery si se omite)
 WEBREPL_PASSWORD=admin        # Password WebREPL
 WEBREPL_PORT=8266             # Puerto (no cambiar)
 
@@ -161,6 +161,11 @@ WEBREPL_PORT=8266             # Puerto (no cambiar)
 **Si no existe `.env`**:
 - `tools/setup_initial.py` detecta puerto automáticamente
 - `tools/deploy_wifi.py` busca ESP8266 en la red local automáticamente
+
+**Nota sobre IP dinámica (DHCP)**:
+- Si el ESP8266 usa DHCP y cambia de IP, el autodiscovery lo encontrará automáticamente
+- No necesitas actualizar `WEBREPL_IP` manualmente si usas autodiscovery
+- Actualiza `WEBREPL_IP` solo si quieres deploy más rápido o tienes múltiples ESP8266
 
 ---
 
@@ -362,23 +367,29 @@ sudo usermod -a -G dialout $USER
 
 ### Búsqueda Automática de ESP8266
 
-`tools/deploy_wifi.py` escanea la red automáticamente si no hay `WEBREPL_IP` en `.env`:
+`tools/deploy_wifi.py` y `pc/webrepl_deploy.py` escanean la red automáticamente si no hay `WEBREPL_IP` en `.env`:
 
 **Estrategia:**
-1. Prueba IP del `.env` (si existe)
-2. Escanea red local basada en tu IP
+1. Prueba IP del `.env` (si existe y no es `192.168.4.1`)
+2. Escanea red local basada en tu IP (rango /24)
 3. Prueba `192.168.4.1` (hotspot fallback)
 
 **Ventajas**:
 - No necesitas conocer la IP
-- Funciona después de reinicio con nueva IP
+- Funciona después de reinicio con nueva IP (DHCP)
 - Ideal para DHCP dinámico
+- WebREPL no necesita reconfiguración cuando cambia la IP
 
 **Desventajas**:
 - Más lento (~10 segundos de escaneo)
 - Puede encontrar el ESP8266 equivocado si hay múltiples
 
-**Solución**: Configura `WEBREPL_IP` en `.env` para deploy más rápido
+**Cuándo actualizar `WEBREPL_IP` manualmente**:
+- Si quieres deploy más rápido (evita escaneo)
+- Si tienes múltiples ESP8266 en la misma red
+- Si el ESP8266 tiene IP estática configurada
+
+**Nota importante**: El autodiscovery maneja automáticamente cambios de IP por DHCP. WebREPL funciona tanto con WiFi (IP dinámica) como con hotspot (`192.168.4.1`). No necesitas reconfigurar nada cuando el ESP8266 cambia de red o recibe nueva IP.
 
 ---
 

@@ -60,44 +60,79 @@ def main():
         print(f"{RED}❌ Puerto requerido{NC}")
         sys.exit(1)
 
-    print(f"{BLUE}[1/3] Puerto: {port}{NC}")
+    print(f"{BLUE}[1/4] Puerto: {port}{NC}")
+
+    # Obtener credenciales WiFi (REQUERIDAS - mínimo indispensable)
+    print(f"\n{YELLOW}⚠️  WiFi es REQUERIDO para el setup mínimo{NC}")
+    wifi_ssid = env.get('WIFI_SSID') or input(f"{YELLOW}WiFi SSID: {NC}").strip()
+    if not wifi_ssid:
+        print(f"{RED}❌ WiFi SSID es requerido{NC}")
+        sys.exit(1)
+    
+    wifi_password = env.get('WIFI_PASSWORD') or input(f"{YELLOW}WiFi Password: {NC}").strip()
+    if not wifi_password:
+        print(f"{RED}❌ WiFi Password es requerido{NC}")
+        sys.exit(1)
 
     # Obtener password WebREPL
     webrepl_pass = env.get('WEBREPL_PASSWORD') or input(f"{YELLOW}Password WebREPL (default: admin): {NC}").strip() or "admin"
     
-    # Actualizar .env con password
+    # Actualizar .env con todas las configuraciones
     env_path = os.path.join(project_dir, '.env')
+    env_lines = []
+    wifi_ssid_found = False
+    wifi_password_found = False
+    password_found = False
+    
     if os.path.exists(env_path):
-        env_lines = []
-        password_found = False
         with open(env_path, 'r') as f:
             for line in f:
-                if line.strip().startswith('WEBREPL_PASSWORD='):
+                if line.strip().startswith('WIFI_SSID='):
+                    env_lines.append(f'WIFI_SSID={wifi_ssid}\n')
+                    wifi_ssid_found = True
+                elif line.strip().startswith('WIFI_PASSWORD='):
+                    env_lines.append(f'WIFI_PASSWORD={wifi_password}\n')
+                    wifi_password_found = True
+                elif line.strip().startswith('WEBREPL_PASSWORD='):
                     env_lines.append(f'WEBREPL_PASSWORD={webrepl_pass}\n')
                     password_found = True
                 else:
                     env_lines.append(line)
-        
-        if not password_found:
-            env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={webrepl_pass}\n')
-        
-        with open(env_path, 'w') as f:
-            f.writelines(env_lines)
+    
+    # Agregar configuraciones faltantes
+    if not wifi_ssid_found:
+        env_lines.append(f'\n# WiFi Configuration (REQUERIDO)\nWIFI_SSID={wifi_ssid}\n')
+    if not wifi_password_found:
+        env_lines.append(f'WIFI_PASSWORD={wifi_password}\n')
+    if not password_found:
+        env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={webrepl_pass}\n')
+    
+    with open(env_path, 'w') as f:
+        f.writelines(env_lines)
+    
+    print(f"{GREEN}✅ Credenciales guardadas en .env{NC}")
 
     # 1. Configurar webrepl_cfg.py
-    print(f"\n{BLUE}[2/3] Configurando WebREPL...{NC}")
+    print(f"\n{BLUE}[2/4] Configurando WebREPL...{NC}")
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-        f.write(f"PASS = '{webrepl_pass}'\n")
+        # Usar repr() para escapar correctamente comillas y caracteres especiales
+        f.write(f"PASS = {repr(webrepl_pass)}\n")
         webrepl_cfg = f.name
 
     if not run_ampy(['--port', port, 'put', webrepl_cfg, 'webrepl_cfg.py']):
-        os.unlink(webrepl_cfg)
+        try:
+            os.unlink(webrepl_cfg)
+        except:
+            pass
         sys.exit(1)
-    os.unlink(webrepl_cfg)
+    try:
+        os.unlink(webrepl_cfg)
+    except:
+        pass
     print(f"{GREEN}✅ webrepl_cfg.py configurado{NC}")
 
     # 2. Copiar boot.py
-    print(f"\n{BLUE}[3/3] Copiando boot.py...{NC}")
+    print(f"\n{BLUE}[3/4] Copiando boot.py...{NC}")
     boot_path = os.path.join(project_dir, 'src', 'boot.py')
 
     if not os.path.exists(boot_path):
@@ -108,11 +143,16 @@ def main():
         sys.exit(1)
     print(f"{GREEN}✅ boot.py instalado{NC}")
 
-    # 3. Copiar .env si existe
-    if os.path.exists(env_path):
-        print(f"\n{BLUE}Copiando .env...{NC}")
-        if run_ampy(['--port', port, 'put', env_path, '.env']):
-            print(f"{GREEN}✅ .env copiado{NC}")
+    # 3. Copiar .env (REQUERIDO - contiene credenciales WiFi)
+    print(f"\n{BLUE}[4/4] Copiando .env (WiFi + WebREPL)...{NC}")
+    if not os.path.exists(env_path):
+        print(f"{RED}❌ Error: .env no existe después de guardar credenciales{NC}")
+        sys.exit(1)
+    
+    if not run_ampy(['--port', port, 'put', env_path, '.env']):
+        print(f"{RED}❌ Error copiando .env al ESP8266{NC}")
+        sys.exit(1)
+    print(f"{GREEN}✅ .env copiado (WiFi configurado){NC}")
 
     # Resumen
     print(f"\n{GREEN}{'='*50}{NC}")
@@ -122,15 +162,23 @@ def main():
     print(f"{BLUE}📋 Resumen:{NC}")
     print(f"   • webrepl_cfg.py: Configurado")
     print(f"   • boot.py: Instalado")
-    print(f"   • .env: {'Copiado' if os.path.exists(env_path) else 'No disponible'}")
+    print(f"   • .env: Copiado (WiFi: {wifi_ssid})")
     print(f"\n{YELLOW}Próximos pasos:{NC}")
     print(f"  1. Reinicia el ESP8266")
-    print(f"  2. WebREPL estará disponible en ws://<IP>:8266")
-    print(f"  3. Usa: python3 pc/webrepl_deploy.py para subir archivos\n")
+    print(f"  2. El ESP intentará conectar a WiFi: {wifi_ssid}")
+    print(f"  3. Si falla, creará hotspot con mismo SSID/password")
+    print(f"  4. WebREPL estará disponible en ws://<IP>:8266")
+    print(f"  5. Usa: python3 pc/webrepl_deploy.py para subir archivos\n")
 
     input(f"{BLUE}Presiona Enter cuando hayas reiniciado el ESP8266...{NC}")
 
-    print(f"\n{BLUE}📡 Abriendo monitor serial...{NC}\n")
+    print(f"\n{BLUE}📡 Abriendo monitor serial (DEBUGGING)...{NC}")
+    print(f"{YELLOW}   El monitor serial es tu herramienta principal para debugging.{NC}")
+    print(f"{YELLOW}   Aquí verás todos los logs del ESP8266, incluyendo:{NC}")
+    print(f"      • Estado de conexión WiFi")
+    print(f"      • Intentos de conexión a red")
+    print(f"      • Creación de hotspot (si WiFi falla)")
+    print(f"      • Errores y mensajes del sistema\n")
     monitor = SerialMonitor(port=port, baudrate=115200, max_reconnect_attempts=5)
     monitor.start()
 
