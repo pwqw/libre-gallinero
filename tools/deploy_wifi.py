@@ -4,9 +4,22 @@ Script unificado para subir archivos a ESP8266 vía WebREPL (WiFi).
 Funciona tanto en PC como en Termux/Android.
 
 Uso:
+    # Deploy solo módulos base (sin proyecto):
     python3 tools/deploy_wifi.py
-    # O desde el directorio tools/:
-    python3 deploy_wifi.py
+    
+    # Deploy módulos base + proyecto específico:
+    python3 tools/deploy_wifi.py heladera
+    python3 tools/deploy_wifi.py gallinero
+    
+    # Con IP específica:
+    python3 tools/deploy_wifi.py heladera 192.168.1.100
+
+Archivos base copiados (coherente con setup_webrepl.py):
+    - boot.py, main.py, config.py, wifi.py, ntp.py, project_loader.py
+
+Proyectos (cuando se especifica):
+    - heladera/ → heladera/__init__.py, heladera/blink.py
+    - gallinero/ → gallinero/__init__.py, gallinero/app.py, etc.
 
 Requiere:
     pip install websocket-client python-dotenv
@@ -44,8 +57,9 @@ def get_files_to_upload(project_dir, project_name=None):
     src_dir = Path(project_dir) / 'src'
     files = []
     
-    # Archivos principales de Python (incluyendo módulos nuevos)
-    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'project_loader.py', 'solar.py', 'logic.py']
+    # Archivos principales de Python (módulos base - coherente con setup_webrepl.py)
+    # NOTA: solar.py y logic.py están dentro de gallinero/, no en src/ directamente
+    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'project_loader.py']
     for filename in main_files:
         local_path = src_dir / filename
         if local_path.exists():
