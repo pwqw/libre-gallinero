@@ -295,11 +295,16 @@ def main():
     log("=" * 50)
     load_project(project, cfg)
 
-# IMPORTANTE: main.py NO se ejecuta automáticamente
-# Para iniciar manualmente vía WebREPL:
-#   >>> import main
-#   >>> main.main()
-# O simplemente:
-#   >>> from main import main; main()
-#
-# Esto garantiza que WebREPL siempre esté disponible después de boot.py
+# Ejecutar main() automáticamente después de un delay para asegurar que WebREPL esté listo
+# El delay permite que WebREPL se inicie completamente antes de comenzar WiFi
+log("Esperando 2 segundos para que WebREPL se inicie completamente...")
+time.sleep(2)
+log("Iniciando main() automáticamente...")
+try:
+    main()
+except Exception as e:
+    log(f"Error en main(): {e}")
+    import sys
+    sys.print_exception(e)
+    log("El sistema seguirá funcionando, pero WiFi no se conectará automáticamente")
+    log("Puedes ejecutar manualmente: import main; main.main()")
