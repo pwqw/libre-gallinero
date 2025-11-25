@@ -1,6 +1,4 @@
-# wifi.py - WiFi connection manager (agnóstico de proyecto)
-# Monitorea y reconecta automáticamente si se pierde la señal
-
+# wifi.py - WiFi connection manager
 _wlan = None
 _cfg = None
 _wdt_callback = None
@@ -15,7 +13,6 @@ def log(msg):
         pass
 
 def _get_wlan():
-    """Obtiene o crea la instancia WLAN (singleton)"""
     global _wlan
     if _wlan is None:
         import network
@@ -23,8 +20,19 @@ def _get_wlan():
         _wlan.active(True)
     return _wlan
 
+def _start_webrepl(ip):
+    try:
+        import webrepl
+        webrepl.start()
+        log(f"✅ WebREPL: ws://{ip}:8266")
+    except:
+        pass
+
+def _check_ip_range(ip):
+    if not ip.startswith('192.168.0.'):
+        log(f"⚠ IP fuera de rango esperado (192.168.0.x)")
+
 def connect_wifi(cfg, wdt_callback=None):
-    """Conecta WiFi en loop hasta éxito (agnóstico de proyecto)"""
     global _cfg, _wdt_callback
     _cfg = cfg
     _wdt_callback = wdt_callback
@@ -38,24 +46,10 @@ def connect_wifi(cfg, wdt_callback=None):
     if wlan.isconnected():
         ifconfig = wlan.ifconfig()
         ip = ifconfig[0]
-        netmask = ifconfig[1]
-        gateway = ifconfig[2]
-        dns = ifconfig[3]
-        log(f"WiFi ya conectado: {ip}")
         if ip and ip != '0.0.0.0':
-            log(f"  Netmask: {netmask}")
-            log(f"  Gateway (Router): {gateway}")
-            log(f"  DNS: {dns}")
-            # Advertencia si la IP no está en el rango esperado (192.168.0.x)
-            if not ip.startswith('192.168.0.'):
-                log(f"  ⚠ ADVERTENCIA: IP fuera del rango esperado (192.168.0.x)")
-                log(f"  ⚠ Puede estar conectado a una red diferente")
-            try:
-                import webrepl
-                webrepl.start()
-                log("✅ WebREPL: ws://{}:8266".format(ip))
-            except:
-                pass
+            log(f"WiFi ya conectado: {ip}")
+            _check_ip_range(ip)
+            _start_webrepl(ip)
         return True
 
     ssid = cfg['WIFI_SSID']
@@ -70,11 +64,12 @@ def connect_wifi(cfg, wdt_callback=None):
     log(f"Red: {repr(ssid)} (oculta: {hidden})")
     
     attempt = 0
+    status_map = {1000: 'IDLE', 1001: 'CONNECTING', 1010: 'GOT_IP',
+                  202: 'WRONG_PASSWORD', 201: 'NO_AP_FOUND', 200: 'CONNECT_FAIL'}
     
     while True:
         attempt += 1
-        log("")
-        log(f"--- Intento de conexión #{attempt} ---")
+        log(f"--- Intento #{attempt} ---")
         
         if wdt_callback:
             try:
@@ -85,20 +80,15 @@ def connect_wifi(cfg, wdt_callback=None):
         if not hidden and (attempt == 1 or attempt % 5 == 0):
             try:
                 networks = wlan.scan()
-                found = False
-                for net in networks:
-                    net_ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]
-                    if net_ssid == ssid:
-                        found = True
-                        log(f"✓ Red encontrada: {ssid}")
-                        break
-                if not found:
+                found = any((net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]) == ssid for net in networks)
+                if found:
+                    log(f"✓ Red encontrada: {ssid}")
+                else:
                     log(f"⚠ Red no encontrada, intentando conexión directa...")
             except:
                 pass
 
         if wlan.status() == network.STAT_CONNECTING:
-            log("Limpiando estado de conexión anterior...")
             wlan.disconnect()
             time.sleep(1)
         
@@ -110,10 +100,10 @@ def connect_wifi(cfg, wdt_callback=None):
             time.sleep(5)
             continue
 
-        timeout_seconds = 30 if hidden else 15
-        log(f"Esperando conexión (timeout: {timeout_seconds}s)...")
+        timeout_s = 30 if hidden else 15
+        log(f"Esperando conexión ({timeout_s}s)...")
         timeout = 0
-        while not wlan.isconnected() and timeout < timeout_seconds:
+        while not wlan.isconnected() and timeout < timeout_s:
             time.sleep(1)
             timeout += 1
             
@@ -124,60 +114,35 @@ def connect_wifi(cfg, wdt_callback=None):
                     pass
             
             status = wlan.status()
-            status_map = {1000: 'IDLE', 1001: 'CONNECTING', 1010: 'GOT_IP',
-                          202: 'WRONG_PASSWORD', 201: 'NO_AP_FOUND', 200: 'CONNECT_FAIL'}
             status_name = status_map.get(status, f'UNKNOWN({status})')
             
             if timeout % 5 == 0:
-                log(f"Esperando... ({timeout}/{timeout_seconds}s) - {status_name}")
+                log(f"Esperando... ({timeout}/{timeout_s}s) - {status_name}")
             
             if status in [202, 201, 200]:
                 log(f"✗ Error: {status_name}")
                 break
 
         if wlan.isconnected():
-            # Esperar un momento para asegurar que la IP esté completamente asignada
             time.sleep(0.5)
-            
-            # Obtener configuración de red
             ifconfig = wlan.ifconfig()
             ip = ifconfig[0]
-            netmask = ifconfig[1]
-            gateway = ifconfig[2]
-            dns = ifconfig[3]
             
-            # Si la IP no está asignada, esperar y volver a obtener toda la configuración
             if ip == '0.0.0.0' or not ip:
-                log("⚠ IP aún no asignada, esperando...")
                 time.sleep(2)
                 ifconfig = wlan.ifconfig()
                 ip = ifconfig[0]
-                netmask = ifconfig[1]
-                gateway = ifconfig[2]
-                dns = ifconfig[3]
             
             if ip and ip != '0.0.0.0':
-                log("")
                 log("✓✓✓ WiFi CONECTADO ✓✓✓")
                 log(f"  IP: {ip}")
-                log(f"  Netmask: {netmask}")
-                log(f"  Gateway (Router): {gateway}")
-                log(f"  DNS: {dns}")
-                # Advertencia si la IP no está en el rango esperado (192.168.0.x)
-                if not ip.startswith('192.168.0.'):
-                    log(f"  ⚠ ADVERTENCIA: IP fuera del rango esperado (192.168.0.x)")
-                    log(f"  ⚠ Puede estar conectado a una red diferente o router con múltiples subredes")
+                log(f"  Gateway: {ifconfig[2]}")
+                _check_ip_range(ip)
                 log(f"  WebREPL: ws://{ip}:8266")
-                try:
-                    import webrepl
-                    webrepl.start()
-                    log("✅ WebREPL iniciado")
-                except Exception as e:
-                    log(f"⚠ WebREPL error: {e}")
+                _start_webrepl(ip)
                 return True
 
         status = wlan.status()
-        status_map = {202: 'WRONG_PASSWORD', 201: 'NO_AP_FOUND', 200: 'CONNECT_FAIL'}
         status_name = status_map.get(status, f'UNKNOWN({status})')
         log(f"✗ Intento #{attempt} falló - {status_name}")
         if wdt_callback:
@@ -188,18 +153,10 @@ def connect_wifi(cfg, wdt_callback=None):
         time.sleep(5)
 
 def monitor_wifi(check_interval=30):
-    """
-    Monitorea la conexión WiFi y reconecta automáticamente si se pierde.
-    Esta función corre en loop infinito (no retorna).
-    
-    Args:
-        check_interval: Intervalo en segundos entre verificaciones (default: 30s)
-    """
     import time
     import network
     
-    log("=== Iniciando monitoreo WiFi ===")
-    log(f"Verificando conexión cada {check_interval} segundos")
+    log(f"=== Monitoreo WiFi (cada {check_interval}s) ===")
     
     wlan = _get_wlan()
     last_ip = None
@@ -216,18 +173,16 @@ def monitor_wifi(check_interval=30):
             if wlan.isconnected():
                 ifconfig = wlan.ifconfig()
                 current_ip = ifconfig[0]
-                gateway = ifconfig[2]
                 
                 if current_ip and current_ip != '0.0.0.0':
                     if last_ip != current_ip:
-                        log(f"✓ WiFi conectado: {current_ip}")
-                        log(f"  Gateway (Router): {gateway}")
+                        log(f"✓ WiFi: {current_ip} (Gateway: {ifconfig[2]})")
                         last_ip = current_ip
                     disconnected_count = 0
                 else:
                     disconnected_count += 1
                     if disconnected_count >= 3:
-                        log("⚠ IP inválida detectada, reconectando...")
+                        log("⚠ IP inválida, reconectando...")
                         wlan.disconnect()
                         time.sleep(2)
                         if _cfg:
@@ -235,9 +190,9 @@ def monitor_wifi(check_interval=30):
             else:
                 disconnected_count += 1
                 if disconnected_count == 1:
-                    log("⚠ WiFi desconectado, iniciando reconexión...")
+                    log("⚠ WiFi desconectado, reconectando...")
                 elif disconnected_count % 5 == 0:
-                    log(f"⚠ WiFi aún desconectado ({disconnected_count} checks), reconectando...")
+                    log(f"⚠ WiFi desconectado ({disconnected_count} checks)")
                 
                 if disconnected_count >= 2:
                     wlan.disconnect()
@@ -248,6 +203,5 @@ def monitor_wifi(check_interval=30):
             time.sleep(check_interval)
             
         except Exception as e:
-            log(f"⚠ Error en monitoreo WiFi: {e}")
+            log(f"⚠ Error monitoreo: {e}")
             time.sleep(check_interval)
-
