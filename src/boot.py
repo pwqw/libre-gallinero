@@ -6,7 +6,9 @@ import sys
 def log(msg):
     """Escribe al serial de forma consistente"""
     print(f"[boot] {msg}")
-    sys.stdout.flush()
+    # En MicroPython, sys.stdout puede ser uio.FileIO sin flush()
+    if hasattr(sys.stdout, 'flush'):
+        sys.stdout.flush()
 
 log("=== Iniciando boot.py ===")
 
