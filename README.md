@@ -20,80 +20,66 @@ Para una descripción más detallada del proyecto, sus componentes y funcionalid
 - Cable USB para conectar el NodeMCU a tu computadora.
 - Editor de texto o IDE compatible (por ejemplo, [Thonny](https://thonny.org/) o [VS Code](https://code.visualstudio.com/)).
 
-## Instalación rápida en Termux (Android)
+## Quick Start
 
-### 1. Instalar dependencias en Termux
+### Primera vez (PC/Mac - Requiere USB)
+
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/pwqw/libre-gallinero.git
+cd libre-gallinero
+
+# 2. Configurar
+cp .env.example .env
+nano .env  # Editar WiFi y password
+
+# 3. Setup inicial (USB, solo una vez)
+python3 tools/setup_initial.py
+
+# 4. Deploy (ya sin cables)
+python3 tools/deploy_wifi.py
+```
+
+### Desarrollo diario (PC/Mac o Termux/Android)
+
+```bash
+# Editar código
+vim src/main.py
+
+# Deploy automático
+python3 tools/deploy_wifi.py  # WiFi (sin cables)
+# O
+python3 tools/deploy_usb.py   # USB (más rápido)
+```
+
+### Instalación rápida en Termux (Android)
+
 ```bash
 curl -sL https://raw.githubusercontent.com/pwqw/libre-gallinero/main/termux/termux-setup.sh | sh
 ```
 
-Esto descargará y ejecutará el script de instalación, configurando el entorno y dejando todo listo para usar.
-
-### 2. Configurar credenciales
-```bash
-cd ~/libre-gallinero
-cp .env.example .env
-nano .env  # Edita con tus credenciales WiFi y WebREPL
-```
-
-**Nota:** Después del setup inicial (flasheo de MicroPython en PC), podrás desarrollar completamente sin cables usando WebREPL. Ver [Desarrollo desde Android](termux/README.md).
-
-## Instalación
-1. Clona este repositorio:
-   ```bash
-   git clone git@github.com:pwqw/libre-gallinero.git
-   cd libre-gallinero
-   ```
-2. Crea y activa un entorno virtual:
-   ```bash
-   python3 -m venv env
-   source env/bin/activate  # En Mac/Linux
-   # O en Windows:
-   # env\Scripts\activate
-   ```
-3. Instala las dependencias de Python:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Conecta tu NodeMCU a tu computadora mediante un cable USB.
-5. Flashea MicroPython en tu dispositivo si aún no lo has hecho. Puedes seguir [esta guía](https://docs.micropython.org/en/latest/esp8266/tutorial/intro.html).
-6. Identifica el puerto serie de tu NodeMCU:
-   - En Mac/Linux: Ejecuta `ls /dev/tty.*` y busca algo como `/dev/tty.usbserial-*`
-   - En Windows: Usa el Administrador de dispositivos y busca el puerto COM asignado
-
-7. Configura WebREPL en el ESP8266 (solo primera vez):
-   ```bash
-   # Conecta por serial usando screen, miniterm o putty
-   screen /dev/tty.usbserial-XXXX 115200
-
-   # En el REPL de MicroPython:
-   >>> import webrepl_setup
-   # Sigue las instrucciones para configurar password
-   # Conecta el ESP8266 a tu red WiFi
-   # Anota la IP asignada
-   ```
-
-8. Sube los archivos al NodeMCU:
-   - **Opción 1 (Más simple):** Abre https://micropython.org/webrepl/ en tu navegador, conecta a `ws://IP_ESP8266:8266` y sube archivos con el botón "Send a file"
-   - **Opción 2 (Automatizado):** Usa el script de deploy (ver [Desarrollo desde Android](termux/README.md))
+Luego configura `.env` y usa `python3 tools/deploy_wifi.py` para deploy.
 
 ## Estructura del Proyecto
 ```
 libre-gallinero/
-├── src/             # Código fuente del proyecto
-│   ├── main.py      # Control principal del sistema
-│   ├── config.py    # Configuración de WiFi y parámetros del sistema
-│   ├── solar.py     # Cálculos de horarios solares
-│   └── tests/*.py   # Pruebas unitarias
-├── docs/            # Documentación y diagramas
-└── requirements.txt # Dependencias de Python
+├── src/             # Código ESP8266
+│   ├── boot.py      # Bootstrapping WiFi + WebREPL
+│   ├── main.py      # Lógica principal
+│   ├── solar.py     # Cálculos solares
+│   └── logic.py     # Control de relés
+├── tools/           # Scripts de deployment
+│   ├── deploy_wifi.py    # Deploy vía WiFi
+│   ├── deploy_usb.py     # Deploy vía USB
+│   └── setup_initial.py  # Setup inicial
+├── docs/            # Documentación
+└── requirements.txt # Dependencias Python
 ```
 
-## Uso
-1. Configura los parámetros de WiFi y ubicación en `.env`
-2. Sube los archivos al NodeMCU
-3. Al iniciar, el dispositivo intentará conectarse a WiFi configurado
-4. Si falla WiFi, creará un hotspot para sincronizar hora vía navegador en `http://192.168.4.1`
+## Documentación
+
+- **Instalación completa:** Ver [pc/README.md](pc/README.md) o [termux/README.md](termux/README.md)
+- **Descripción del proyecto:** Ver [DESCRIPCION-DEL-PROYECTO.md](DESCRIPCION-DEL-PROYECTO.md)
 
 ## Contribuciones
 ¡Las contribuciones son bienvenidas! Si deseas contribuir, por favor sigue estos pasos:

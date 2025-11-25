@@ -134,13 +134,15 @@ nano .env  # o vim, vi, etc
 **Uso:**
 ```bash
 # Desde Termux o Mac
-python3 termux/webrepl_deploy.py
+python3 tools/deploy_wifi.py
 ```
 
 El script automáticamente:
 - Lee configuración desde `.env`
-- Sube boot.py (auto-configura WiFi y WebREPL)
-- Sube todos los archivos del proyecto
+- Busca ESP8266 automáticamente si no hay IP configurada
+- Sube todos los archivos de `src/`
+- Copia `.env` al ESP8266
+- Verifica que el deploy funcionó
 - Ofrece reiniciar el ESP8266
 
 **Ventajas:**
@@ -184,7 +186,7 @@ El script automáticamente:
 ### Desarrollo
 1. Editar código en Android (Termux/editor) o Mac
 2. **Opción Simple:** Abrir WebREPL web, subir archivos manualmente
-3. **Opción Automatizada (Recomendada):** Ejecutar `python3 termux/webrepl_deploy.py`
+3. **Opción Automatizada (Recomendada):** Ejecutar `python3 tools/deploy_wifi.py`
 4. Verificar en REPL web
 
 ### Debug

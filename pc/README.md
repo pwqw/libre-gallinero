@@ -10,14 +10,14 @@
 
 ```bash
 # 1️⃣ Setup inicial (USB, solo primera vez)
-python3 pc/setup_webrepl.py
+python3 tools/setup_initial.py
 # ↳ Copia boot.py completo, webrepl_cfg.py, .env
 # ↳ Abre monitor serial para ver bootstrapping
 
 # 2️⃣ Reinicia ESP8266 y observa el boot
 
 # 3️⃣ Deploy sin cables (WiFi, todas las veces)
-python3 pc/webrepl_deploy.py
+python3 tools/deploy_wifi.py
 # ↳ Sube archivos vía WebREPL
 # ↳ Sin USB, solo WiFi
 ```
@@ -28,21 +28,20 @@ python3 pc/webrepl_deploy.py
 
 | Script | Conexión | Uso | Velocidad | Cuándo Usarlo |
 |--------|----------|-----|-----------|---------------|
-| `setup_webrepl.py` | USB | Setup inicial | ⭐⭐⭐⭐ | Primera vez |
-| `webrepl_deploy.py` | WiFi | Deploy remoto | ⭐⭐⭐ | Desarrollo diario |
-| `deploy.py` | USB | Deploy USB | ⭐⭐⭐⭐ | Alternativa rápida |
-| `test_webrepl.py` | WiFi | Test conexión | ⭐⭐⭐ | Verificar WebREPL |
+| `tools/setup_initial.py` | USB | Setup inicial | ⭐⭐⭐⭐ | Primera vez |
+| `tools/deploy_wifi.py` | WiFi | Deploy remoto | ⭐⭐⭐ | Desarrollo diario |
+| `tools/deploy_usb.py` | USB | Deploy USB | ⭐⭐⭐⭐ | Alternativa rápida |
 
 ---
 
 ## 🔧 Scripts Detallados
 
-### `setup_webrepl.py` - Setup Inicial
+### `tools/setup_initial.py` - Setup Inicial
 
 **🎯 Propósito**: Instalar boot.py completo y configurar WebREPL
 
 **Características**:
-- ✅ Copia `boot.py` **completo** (548 líneas con toda la lógica)
+- ✅ Copia `boot.py` completo
 - ✅ Configura `webrepl_cfg.py` con password
 - ✅ Copia `.env` si existe en el repositorio
 - ✅ Abre monitor serial **BLOCKING** para observar boot
@@ -50,7 +49,7 @@ python3 pc/webrepl_deploy.py
 
 **Uso**:
 ```bash
-python3 pc/setup_webrepl.py
+python3 tools/setup_initial.py
 ```
 
 **Flujo**:
@@ -77,24 +76,25 @@ boot.py → WiFi → WebREPL ✅
 
 ---
 
-### `webrepl_deploy.py` - Deploy sin Cables
+### `tools/deploy_wifi.py` - Deploy sin Cables
 
 **🎯 Propósito**: Subir código vía WiFi (sin USB)
 
 **Características**:
 - ✅ Deploy vía WebREPL (WiFi)
 - ✅ Busca ESP8266 automáticamente si no hay IP
-- ✅ Sube archivos: `boot.py`, `main.py`, `solar.py`, `logic.py`
+- ✅ Sube todos los archivos de `src/` automáticamente
 - ✅ Copia `.env` automáticamente
+- ✅ Verificación post-deploy
 - ✅ Sin necesidad de USB
 
 **Uso**:
 ```bash
 # Opción 1: Con IP configurada en .env
-python3 pc/webrepl_deploy.py
+python3 tools/deploy_wifi.py
 
 # Opción 2: Sin .env (busca automáticamente)
-python3 pc/webrepl_deploy.py
+python3 tools/deploy_wifi.py
 # ↳ Escanea red local para encontrar ESP8266
 ```
 
@@ -122,67 +122,20 @@ Subir archivos uno por uno
 
 ---
 
-### `test_webrepl.py` - Test de Conexión
-
-**🎯 Propósito**: Verificar que WebREPL funciona
-
-**Características**:
-- ✅ Test rápido de conexión
-- ✅ Ejecuta comando de prueba
-- ✅ Busca automáticamente si no hay IP
-- ✅ Valida autenticación
-
-**Uso**:
-```bash
-python3 pc/test_webrepl.py
-
-# Salida esperada:
-# 🐔 Libre-Gallinero WebREPL Test
-#
-# ✅ Conectado a WebREPL
-# ✅ WebREPL funcionando correctamente
-```
-
----
-
-### `deploy.py` / `deploy.sh` - Deploy por USB
+### `tools/deploy_usb.py` - Deploy por USB
 
 **🎯 Propósito**: Alternativa rápida usando cable USB
 
 **Características**:
-- ✅ Más rápido que WebREPL
+- ✅ Más rápido que WebREPL (~10s vs ~30s)
 - ✅ Requiere USB conectado
 - ✅ Usa `ampy` (adafruit-ampy)
-- ✅ Abre monitor serial después
+- ✅ Detecta puerto automáticamente
+- ✅ Abre monitor serial opcionalmente
 
 **Uso**:
 ```bash
-# Bash (Mac/Linux)
-bash pc/deploy.sh
-
-# Python (Windows/Mac/Linux)
-python3 pc/deploy.py
-```
-
----
-
-### `webrepl_connect.py` - REPL Interactivo
-
-**🎯 Propósito**: Conexión interactiva al ESP8266
-
-**Características**:
-- ✅ Sesión REPL interactiva
-- ✅ Ejecuta comandos Python en vivo
-- ✅ Debugging remoto
-- ✅ Salir con Ctrl+C
-
-**Uso**:
-```bash
-python3 pc/webrepl_connect.py
-
-# En el REPL:
->>> import machine
->>> machine.reset()
+python3 tools/deploy_usb.py
 ```
 
 ---
@@ -206,8 +159,8 @@ WEBREPL_PORT=8266             # Puerto (no cambiar)
 ```
 
 **Si no existe `.env`**:
-- `setup_webrepl.py` detecta puerto automáticamente
-- `webrepl_deploy.py` busca ESP8266 en la red local
+- `tools/setup_initial.py` detecta puerto automáticamente
+- `tools/deploy_wifi.py` busca ESP8266 en la red local automáticamente
 
 ---
 
@@ -218,7 +171,7 @@ WEBREPL_PORT=8266             # Puerto (no cambiar)
 ```
 1. Flashear MicroPython en ESP8266 (esptool)
    ↓
-2. python3 pc/setup_webrepl.py
+2. python3 tools/setup_initial.py
    ↓
 3. Reiniciar ESP8266
    ↓
@@ -228,7 +181,7 @@ WEBREPL_PORT=8266             # Puerto (no cambiar)
    ↓
 6. Anotar IP del ESP8266
    ↓
-7. python3 pc/webrepl_deploy.py (deploy remoto)
+7. python3 tools/deploy_wifi.py (deploy remoto)
 ```
 
 ### Desarrollo Diario
@@ -236,7 +189,7 @@ WEBREPL_PORT=8266             # Puerto (no cambiar)
 ```
 Editar código localmente
     ↓
-python3 pc/webrepl_deploy.py
+python3 tools/deploy_wifi.py
     ↓
 Reiniciar ESP8266 (opcional)
     ↓
@@ -247,13 +200,15 @@ Repetir 🔄
 
 ### Debugging
 
+Usa WebREPL web (https://micropython.org/webrepl/):
 ```
-python3 pc/webrepl_connect.py
+Conectar a ws://<IP>:8266
     ↓
 Ejecutar comandos interactivos
     ↓
 >>> import main
->>> main.control_relay_ponedoras()
+>>> import machine
+>>> machine.reset()
     ↓
 Verificar logs
 ```
@@ -407,13 +362,12 @@ sudo usermod -a -G dialout $USER
 
 ### Búsqueda Automática de ESP8266
 
-`webrepl_deploy.py` escanea la red automáticamente:
+`tools/deploy_wifi.py` escanea la red automáticamente si no hay `WEBREPL_IP` en `.env`:
 
-```python
-# Detecta tu red local (ej: 192.168.1.0/24)
-# Prueba cada IP en paralelo (50 threads)
-# Primer ESP8266 encontrado → usado para deploy
-```
+**Estrategia:**
+1. Prueba IP del `.env` (si existe)
+2. Escanea red local basada en tu IP
+3. Prueba `192.168.4.1` (hotspot fallback)
 
 **Ventajas**:
 - No necesitas conocer la IP
@@ -424,7 +378,7 @@ sudo usermod -a -G dialout $USER
 - Más lento (~10 segundos de escaneo)
 - Puede encontrar el ESP8266 equivocado si hay múltiples
 
-**Solución**: Configura IP fija en `.env`
+**Solución**: Configura `WEBREPL_IP` en `.env` para deploy más rápido
 
 ---
 

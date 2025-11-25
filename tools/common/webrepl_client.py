@@ -1,0 +1,490 @@
+#!/usr/bin/env python3
+"""
+Módulo común para conexión y operaciones WebREPL con ESP8266.
+Extrae toda la lógica compartida de los scripts de deployment.
+"""
+
+import os
+import sys
+import websocket
+import time
+import socket
+import ipaddress
+import threading
+from pathlib import Path
+
+# Colores ANSI
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[1;33m'
+BLUE = '\033[0;34m'
+NC = '\033[0m'
+
+
+def load_config(project_dir=None):
+    """
+    Carga configuración desde archivo .env.
+    
+    Args:
+        project_dir: Directorio raíz del proyecto. Si es None, se detecta automáticamente.
+    
+    Returns:
+        dict: Variables de configuración, o {} si no existe .env
+    """
+    if project_dir is None:
+        # Detectar directorio del proyecto (buscar src/ o .git)
+        current = Path.cwd()
+        for path in [current, current.parent]:
+            if (path / 'src').exists() or (path / '.git').exists():
+                project_dir = path
+                break
+        if project_dir is None:
+            project_dir = current
+    
+    env_path = Path(project_dir) / '.env'
+    env_vars = {}
+    
+    if not env_path.exists():
+        return {}
+    
+    with open(env_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                env_vars[key.strip()] = value.strip().strip('"').strip("'")
+    
+    return env_vars
+
+
+def get_local_ip():
+    """Obtiene la IP local de la máquina"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
+
+
+def get_network_range(ip):
+    """Obtiene el rango de red basado en la IP local"""
+    try:
+        if '/' in ip:
+            network = ipaddress.ip_network(ip, strict=False)
+        else:
+            ip_obj = ipaddress.IPv4Address(ip)
+            network = ipaddress.ip_network(f"{ip_obj}/24", strict=False)
+        return network
+    except Exception:
+        return None
+
+
+def test_webrepl_connection(ip, password, port=8266, timeout=2):
+    """Prueba si un IP tiene WebREPL activo"""
+    url = f"ws://{ip}:{port}"
+    try:
+        ws = websocket.create_connection(url, timeout=timeout)
+        time.sleep(0.3)
+        
+        try:
+            data = ws.recv(timeout=1)
+        except:
+            data = ""
+        
+        ws.send(password + '\r\n')
+        time.sleep(0.3)
+        
+        try:
+            response = ws.recv(timeout=1)
+            if "WebREPL connected" in response or ">>>" in response:
+                ws.close()
+                return True
+        except:
+            pass
+        
+        ws.close()
+        return False
+    except Exception:
+        return False
+
+
+def find_esp8266_in_network(password, port=8266, verbose=True):
+    """
+    Escanea la red local buscando un ESP8266 con WebREPL activo.
+    
+    Args:
+        password: Password de WebREPL
+        port: Puerto WebREPL (default: 8266)
+        verbose: Si True, muestra mensajes de progreso
+    
+    Returns:
+        str: IP del ESP8266 encontrado, o None si no se encuentra
+    """
+    if verbose:
+        print(f"{BLUE}🔍 Escaneando red local en busca de ESP8266...{NC}")
+    
+    local_ip = get_local_ip()
+    if not local_ip:
+        if verbose:
+            print(f"{RED}❌ No se pudo obtener la IP local{NC}")
+        return None
+    
+    if verbose:
+        print(f"   IP local: {local_ip}")
+    
+    network = get_network_range(local_ip)
+    if not network:
+        if verbose:
+            print(f"{RED}❌ No se pudo determinar el rango de red{NC}")
+        return None
+    
+    if verbose:
+        print(f"   Escaneando: {network.network_address} - {network.broadcast_address}")
+        print(f"   Probando puerto {port} con password '{password}'...\n")
+    
+    found_ip = None
+    total_hosts = len(list(network.hosts()))
+    checked = 0
+    
+    lock = threading.Lock()
+    
+    def check_host(host_ip):
+        nonlocal found_ip
+        if found_ip:
+            return
+        
+        host_str = str(host_ip)
+        if test_webrepl_connection(host_str, password, port, timeout=1):
+            with lock:
+                if not found_ip:
+                    found_ip = host_str
+                    if verbose:
+                        print(f"\n{GREEN}✅ ESP8266 encontrado en: {host_str}{NC}\n")
+    
+    threads = []
+    for host in network.hosts():
+        if found_ip:
+            break
+        t = threading.Thread(target=check_host, args=(host,))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+        checked += 1
+        
+        if verbose and checked % 10 == 0:
+            print(f"   Escaneados {checked}/{total_hosts} hosts...", end='\r')
+        
+        if len(threads) >= 50:
+            for t in threads:
+                t.join(timeout=0.1)
+            threads = [t for t in threads if t.is_alive()]
+    
+    for t in threads:
+        t.join(timeout=0.5)
+    
+    if not found_ip and verbose:
+        print(f"\n{YELLOW}⚠️  No se encontró ESP8266 en la red local{NC}")
+    
+    return found_ip
+
+
+def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True):
+    """
+    Busca ESP8266 con WebREPL usando estrategia inteligente:
+    1. Intenta IP del .env (si existe y no es 192.168.4.1)
+    2. Obtiene IP local y escanea ese rango
+    3. Usa 192.168.4.1 como fallback hardcodeado (hotspot)
+    
+    Args:
+        config_ip: IP desde configuración (.env)
+        password: Password de WebREPL
+        port: Puerto WebREPL (default: 8266)
+        verbose: Si True, muestra mensajes informativos
+    
+    Returns:
+        str: IP del ESP8266 encontrado, o None si no se encuentra
+    """
+    # 1. Intentar IP del .env si existe y no es 192.168.4.1
+    if config_ip and config_ip != '192.168.4.1':
+        if verbose:
+            print(f"{BLUE}[1/3] Probando IP del .env: {config_ip}{NC}")
+        if test_webrepl_connection(config_ip, password, port, timeout=2):
+            if verbose:
+                print(f"{GREEN}✅ ESP8266 encontrado en: {config_ip} (desde .env){NC}\n")
+            return config_ip
+        else:
+            if verbose:
+                print(f"{YELLOW}⚠️  IP del .env no responde, continuando búsqueda...{NC}\n")
+    
+    # 2. Obtener IP local y escanear ese rango
+    local_ip = get_local_ip()
+    if local_ip:
+        if verbose:
+            print(f"{BLUE}[2/3] IP local detectada: {local_ip}{NC}")
+            print(f"{BLUE}🔍 Escaneando rango basado en IP local...{NC}\n")
+        found_ip = find_esp8266_in_network(password, port, verbose)
+        if found_ip:
+            return found_ip
+    else:
+        if verbose:
+            print(f"{YELLOW}⚠️  No se pudo obtener IP local, saltando escaneo de red{NC}\n")
+    
+    # 3. Fallback: 192.168.4.1 (hotspot)
+    if verbose:
+        print(f"{BLUE}[3/3] Probando fallback: 192.168.4.1 (hotspot){NC}")
+    if test_webrepl_connection('192.168.4.1', password, port, timeout=2):
+        if verbose:
+            print(f"{GREEN}✅ ESP8266 encontrado en: 192.168.4.1 (hotspot){NC}\n")
+        return '192.168.4.1'
+    else:
+        if verbose:
+            print(f"{RED}❌ No se encontró ESP8266 en ninguna ubicación{NC}\n")
+        return None
+
+
+class WebREPLClient:
+    """
+    Cliente WebREPL para ESP8266.
+    Encapsula conexión, autenticación y operaciones de archivos.
+    """
+    
+    def __init__(self, ip=None, password=None, port=8266, project_dir=None, verbose=True, auto_discover=True):
+        """
+        Inicializa cliente WebREPL.
+        
+        Args:
+            ip: IP del ESP8266 (si es None, se intenta autodiscovery)
+            password: Password de WebREPL
+            port: Puerto WebREPL (default: 8266)
+            project_dir: Directorio raíz del proyecto
+            verbose: Si True, muestra mensajes informativos
+            auto_discover: Si True y ip es None, intenta encontrar ESP8266 automáticamente
+        """
+        self.verbose = verbose
+        self.project_dir = project_dir or self._detect_project_dir()
+        self.config = load_config(self.project_dir)
+        
+        self.password = password or self.config.get('WEBREPL_PASSWORD', 'admin')
+        self.port = port or int(self.config.get('WEBREPL_PORT', '8266'))
+        self.ip = ip or self.config.get('WEBREPL_IP')
+        
+        self.ws = None
+        
+        # Si no hay IP y auto_discover está habilitado, buscar automáticamente
+        if not self.ip and auto_discover:
+            if verbose:
+                print(f"{BLUE}🔍 IP no configurada, buscando ESP8266 automáticamente...{NC}\n")
+            self.ip = find_esp8266_smart(
+                config_ip=self.config.get('WEBREPL_IP'),
+                password=self.password,
+                port=self.port,
+                verbose=verbose
+            )
+    
+    def _detect_project_dir(self):
+        """Detecta el directorio raíz del proyecto"""
+        current = Path.cwd()
+        for path in [current, current.parent]:
+            if (path / 'src').exists() or (path / '.git').exists():
+                return path
+        return current
+    
+    def connect(self):
+        """
+        Conecta al WebREPL del ESP8266.
+        
+        Returns:
+            bool: True si la conexión fue exitosa, False en caso contrario
+        """
+        if not self.ip:
+            if self.verbose:
+                print(f"{RED}❌ No se pudo encontrar el ESP8266{NC}")
+                print("   Opciones:")
+                print("   1. Configura WEBREPL_IP en .env")
+                print("   2. Asegúrate de que el ESP8266 esté conectado a WiFi")
+                print("   3. Verifica que WebREPL esté activo")
+            return False
+        
+        url = f"ws://{self.ip}:{self.port}"
+        if self.verbose:
+            print(f"{BLUE}🔌 Conectando a {url}...{NC}")
+        
+        try:
+            self.ws = websocket.create_connection(url, timeout=10)
+            
+            time.sleep(0.5)
+            try:
+                data = self.ws.recv(timeout=1)
+            except:
+                data = ""
+            
+            self.ws.send(self.password + '\r\n')
+            time.sleep(0.5)
+            
+            try:
+                response = self.ws.recv(timeout=1)
+                if isinstance(response, bytes):
+                    response = response.decode('utf-8', errors='ignore')
+                if "WebREPL connected" in response or ">>>" in response:
+                    if self.verbose:
+                        print(f"{GREEN}✅ Conectado a WebREPL{NC}")
+                    return True
+                else:
+                    if self.verbose:
+                        print(f"{RED}❌ Error de autenticación{NC}")
+                        print(f"   Verifica el password en WEBREPL_PASSWORD")
+                    self.close()
+                    return False
+            except:
+                if self.verbose:
+                    print(f"{GREEN}✅ Conectado a WebREPL{NC}")
+                return True
+        
+        except ConnectionRefusedError:
+            if self.verbose:
+                print(f"{RED}❌ No se pudo conectar a {url}{NC}")
+                print("   Verifica:")
+                print("   1. ESP8266 está encendido")
+                print("   2. ESP8266 está conectado a WiFi")
+                print("   3. WebREPL está activo (import webrepl; webrepl.start())")
+            return False
+        except Exception as e:
+            if self.verbose:
+                print(f"{RED}❌ Error de conexión: {e}{NC}")
+            return False
+    
+    def send_file(self, local_path, remote_name):
+        """
+        Sube un archivo al ESP8266 usando WebREPL.
+        
+        Args:
+            local_path: Ruta local del archivo
+            remote_name: Nombre del archivo en el ESP8266
+        
+        Returns:
+            bool: True si el upload fue exitoso, False en caso contrario
+        """
+        if not self.ws:
+            if self.verbose:
+                print(f"{RED}❌ No hay conexión WebREPL activa{NC}")
+            return False
+        
+        local_path = Path(local_path)
+        if not local_path.exists():
+            if self.verbose:
+                print(f"{RED}❌ Archivo no encontrado: {local_path}{NC}")
+            return False
+        
+        if self.verbose:
+            print(f"{BLUE}📄 {local_path} → {remote_name}{NC}")
+        
+        try:
+            with open(local_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            content_escaped = content.replace('\\', '\\\\').replace("'", "\\'")
+            
+            upload_code = f"""
+with open('{remote_name}', 'w') as f:
+    f.write('''{content_escaped}''')
+print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
+"""
+            
+            self.ws.send(upload_code + '\r\n')
+            time.sleep(0.5)
+            
+            response = ""
+            try:
+                while True:
+                    data = self.ws.recv()
+                    if isinstance(data, bytes):
+                        response += data.decode('utf-8', errors='ignore')
+                    else:
+                        response += data
+                    
+                    if "Uploaded" in response or ">>>" in response:
+                        break
+                    
+                    time.sleep(0.1)
+            except websocket.WebSocketTimeoutException:
+                pass
+            
+            if "Uploaded" in response or remote_name in response:
+                if self.verbose:
+                    print(f"{GREEN}   ✅ OK{NC}")
+                return True
+            else:
+                if self.verbose:
+                    print(f"{YELLOW}   ⚠️  Completado (sin confirmación clara){NC}")
+                return True
+        
+        except Exception as e:
+            if self.verbose:
+                print(f"{RED}   ❌ Error: {e}{NC}")
+            return False
+    
+    def execute(self, command, timeout=2):
+        """
+        Ejecuta un comando Python en el ESP8266.
+        
+        Args:
+            command: Comando Python a ejecutar
+            timeout: Timeout en segundos
+        
+        Returns:
+            str: Respuesta del comando, o "" si hay error
+        """
+        if not self.ws:
+            return ""
+        
+        try:
+            self.ws.send(command + '\r\n')
+            time.sleep(0.3)
+            
+            response = ""
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    self.ws.settimeout(0.5)
+                    data = self.ws.recv()
+                    if isinstance(data, bytes):
+                        response += data.decode('utf-8', errors='ignore')
+                    else:
+                        response += data
+                    
+                    if ">>>" in response:
+                        break
+                except websocket.WebSocketTimeoutException:
+                    continue
+                except:
+                    break
+            
+            return response
+        except Exception as e:
+            if self.verbose:
+                print(f"{YELLOW}⚠️  Error ejecutando comando: {e}{NC}")
+            return ""
+    
+    def close(self):
+        """Cierra la conexión WebREPL"""
+        if self.ws:
+            try:
+                self.ws.close()
+            except:
+                pass
+            self.ws = None
+    
+    def __enter__(self):
+        """Context manager enter"""
+        if not self.ws:
+            self.connect()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.close()
+        return False
+

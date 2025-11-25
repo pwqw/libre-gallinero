@@ -8,5 +8,5 @@ set -u
 cd $HOME/libre-gallinero
 git pull --rebase
 
-# Ejecutar deploy vía WebREPL
-exec python3 termux/webrepl_deploy.py
+# Ejecutar deploy vía WebREPL (unificado)
+exec python3 tools/deploy_wifi.py
