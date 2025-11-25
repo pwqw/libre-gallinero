@@ -8,9 +8,9 @@ Para una descripción más detallada del proyecto, sus componentes y funcionalid
 ## Características
 - Control automático de iluminación basado en horarios solares de verano
 - Control de temperatura para pollitos con sensor DHT11
-- Interfaz web para monitoreo
+- Sincronización de hora vía hotspot cuando no hay WiFi
 - Compatible con NodeMCU (ESP8266/ESP32)
-- Configuración WiFi vía punto de acceso
+- WebREPL para desarrollo remoto
 
 ## Requisitos
 - NodeMCU (ESP8266 o ESP32).
@@ -90,10 +90,10 @@ libre-gallinero/
 ```
 
 ## Uso
-1. Configura los parámetros de WiFi y ubicación en `config.py`
+1. Configura los parámetros de WiFi y ubicación en `.env`
 2. Sube los archivos al NodeMCU
-3. Al iniciar, el dispositivo creará un punto de acceso WiFi si no puede conectarse a la red configurada
-4. Accede a la interfaz web para monitorear el estado del sistema
+3. Al iniciar, el dispositivo intentará conectarse a WiFi configurado
+4. Si falla WiFi, creará un hotspot para sincronizar hora vía navegador en `http://192.168.4.1`
 
 ## Contribuciones
 ¡Las contribuciones son bienvenidas! Si deseas contribuir, por favor sigue estos pasos:

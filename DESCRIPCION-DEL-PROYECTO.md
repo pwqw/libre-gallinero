@@ -37,21 +37,17 @@ Se mantiene informado en un sitio web el estado de las lámparas, con su respect
 
 Cuando el microcontrolador se prende, trata de escablecer conexión con la red WiFi preconfigurada. Una vez que consigue conexión, actualiza la hora actual a través del protocolo NTP.
 
-Si no consigue conexión, entonces crea un hotspot de configuración. Mientras sigue verificando conectarse, periódicamente.  
+Si no consigue conexión, entonces crea un hotspot para sincronización de hora.  
 
 Una vez que obtuvo la hora, se pretende que el microcontrolador administre la hora y fecha actual, e inicie los procesos que cumplen la finalidad del dispositivo.
 
-### Hotspot de configuración
+### Hotspot de sincronización de hora
 
-Consiste armar un AccessPoint WiFi con el microcontrolador. Además debe servir un sitio web con 2 campos de formulario:
-- Nombre de la Wifi
-- Contraseña
+Cuando el microcontrolador no puede conectarse a WiFi, crea un AccessPoint WiFi y sirve un sitio web en puerto 80.
 
-Estos campos los toma, y almacena no-volátilmente el microcontrolador, para encolarlo en la verificación cotidiana (preconfiguración wifi)
+El único propósito del servidor web es sincronizar la hora del dispositivo usando JavaScript del navegador del cliente. La página web automáticamente envía la hora actual del dispositivo del usuario al ESP8266 mediante una petición POST.
 
-La configuración de IP del AP debe prometer que siempre se halle este servicio web en la ubicación `1.1.1.1`, solo para la red local. Si no es posible, entonces `192.168.0.1`
-
-Es importante que mientras este servicio corre, se pueda seguir verificando si conecta a la WiFi preconfigurada.
+La IP del hotspot es `192.168.4.1` y WebREPL permanece disponible en `ws://192.168.4.1:8266`.
 
 ### Componentes
 

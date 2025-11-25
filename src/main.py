@@ -55,75 +55,9 @@ def load_config():
         }
     return cfg
 
-# === HOTSPOT CONFIG ===
-def url_decode(s):
-    """Decodifica URL"""
-    res = []
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c == '%' and i + 2 < len(s):
-            try:
-                res.append(chr(int(s[i+1:i+3], 16)))
-                i += 3
-                continue
-            except:
-                pass
-        elif c == '+':
-            res.append(' ')
-            i += 1
-            continue
-        res.append(c)
-        i += 1
-    return ''.join(res)
-
-def scan_networks():
-    """Escanea WiFi"""
-    print("[main] Escaneando WiFi...")
-    gc.collect()
-    sta = network.WLAN(network.STA_IF)
-    sta.active(True)
-
-    t0 = time.ticks_ms()
-    nets = []
-    while time.ticks_diff(time.ticks_ms(), t0) < 5000:
-        try:
-            nets = sta.scan()
-            if nets:
-                break
-        except:
-            pass
-        time.sleep(1)
-
-    ssids = []
-    for n in nets:
-        ssid = n[0].decode('utf-8') if isinstance(n[0], bytes) else str(n[0])
-        if ssid and ssid not in ssids:
-            ssids.append(ssid)
-
-    print(f"[main] Encontradas {len(ssids)} redes")
-    gc.collect()
-    return ssids
-
-def save_env(ssid, pw, hidden, lat, lon):
-    """Guarda config en .env"""
-    try:
-        with open('.env', 'w') as f:
-            f.write('# Libre-Gallinero\n')
-            f.write(f'WIFI_SSID="{ssid}"\n')
-            f.write(f'WIFI_PASSWORD="{pw}"\n')
-            f.write(f'WIFI_HIDDEN={"true" if hidden else "false"}\n')
-            f.write('WEBREPL_PASSWORD=admin\n')
-            f.write(f'LATITUDE={lat if lat else "-31.4167"}\n')
-            f.write(f'LONGITUDE={lon if lon else "-64.1833"}\n')
-        print('[main] .env guardado')
-        return True
-    except Exception as e:
-        print('[main] .env FAIL:', e)
-        return False
-
-def hotspot_server(ssids):
-    """Servidor HTTP config - MINIMALISTA"""
+# === HOTSPOT TIME SYNC ===
+def hotspot_server():
+    """Servidor HTTP para sincronización de hora vía JavaScript"""
     addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -136,56 +70,52 @@ def hotspot_server(ssids):
     while True:
         try:
             cl, _ = s.accept()
-            req = cl.recv(2048).decode('utf-8')
+            req = cl.recv(1024).decode('utf-8')
 
-            if 'POST /' in req:
+            if 'POST /settime' in req:
                 parts = req.split('\r\n\r\n', 1)
                 body = parts[1] if len(parts) > 1 else ''
 
-                params = {}
-                for pair in body.split('&'):
-                    if '=' in pair:
-                        k, v = pair.split('=', 1)
-                        params[url_decode(k)] = url_decode(v)
+                try:
+                    # Espera JSON: {"timestamp": 1234567890}
+                    import json
+                    data = json.loads(body)
+                    timestamp = data.get('timestamp')
 
-                ssid = params.get('ssid')
-                pw = params.get('password')
-                hidden = params.get('hidden') == 'on'
-                lat = params.get('latitude')
-                lon = params.get('longitude')
-
-                if ssid and pw:
-                    save_env(ssid, pw, hidden, lat, lon)
-                    cl.send(b'HTTP/1.1 200 OK\r\n\r\n<h2>OK</h2><p>Guardado. Reinicia ESP8266</p>')
-                    cl.close()
-                    s.close()
-                    return
-                else:
-                    cl.send(b'HTTP/1.1 400\r\n\r\nError')
+                    if timestamp:
+                        # Convertir timestamp a tupla de tiempo
+                        import utime
+                        tm = utime.localtime(timestamp)
+                        machine.RTC().datetime((tm[0], tm[1], tm[2], tm[6], tm[3], tm[4], tm[5], 0))
+                        print('[main] Hora sincronizada:', tm)
+                        cl.send(b'HTTP/1.1 200 OK\r\n\r\n{"status":"ok"}')
+                    else:
+                        cl.send(b'HTTP/1.1 400\r\n\r\n{"status":"error"}')
+                except Exception as e:
+                    print('[main] Sync error:', e)
+                    cl.send(b'HTTP/1.1 500\r\n\r\n{"status":"error"}')
             else:
-                # GET: formulario HTML minimalista
+                # GET: página con JavaScript para sync
                 html = (
                     'HTTP/1.1 200 OK\r\nContent-Type:text/html\r\n\r\n'
-                    '<html><body style="font-family:sans-serif;padding:2em">'
-                    '<h2>Libre-Gallinero WiFi</h2>'
-                    '<form method="POST">'
-                    '<b>Red:</b><br>'
+                    '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+                    '<title>Libre-Gallinero</title></head>'
+                    '<body style="font-family:sans-serif;padding:2em;text-align:center">'
+                    '<h2>Libre-Gallinero</h2>'
+                    '<p id="status">Sincronizando hora...</p>'
+                    '<script>'
+                    'fetch("/settime",{'
+                    'method:"POST",'
+                    'headers:{"Content-Type":"application/json"},'
+                    'body:JSON.stringify({timestamp:Math.floor(Date.now()/1000)})'
+                    '}).then(r=>r.json()).then(d=>{'
+                    'document.getElementById("status").textContent='
+                    'd.status==="ok"?"Hora sincronizada correctamente":"Error al sincronizar";'
+                    '}).catch(()=>{'
+                    'document.getElementById("status").textContent="Error de conexión";'
+                    '});'
+                    '</script></body></html>'
                 )
-
-                for i, ssid in enumerate(ssids):
-                    html += f'<input type="radio" name="ssid" value="{ssid}" id="s{i}"><label for="s{i}">{ssid}</label><br>'
-
-                html += (
-                    '<br><b>Password:</b><br>'
-                    '<input name="password" type="password" required style="width:100%;padding:0.5em"><br><br>'
-                    '<input type="checkbox" name="hidden"><label>Red oculta</label><br><br>'
-                    '<b>Ubicación (opcional):</b><br>'
-                    '<input name="latitude" placeholder="Lat -31.4167" style="width:100%;padding:0.5em"><br>'
-                    '<input name="longitude" placeholder="Lon -64.1833" style="width:100%;padding:0.5em"><br><br>'
-                    '<input type="submit" value="Guardar" style="padding:0.7em 2em">'
-                    '</form></body></html>'
-                )
-
                 cl.send(html.encode('utf-8'))
 
             cl.close()
@@ -197,7 +127,7 @@ def hotspot_server(ssids):
                 pass
 
 def start_hotspot(cfg):
-    """Crea hotspot y servidor config"""
+    """Crea hotspot para sincronización de hora"""
     ap_ssid = cfg['WIFI_SSID']
     ap_pw = cfg['WIFI_PASSWORD']
 
@@ -216,13 +146,12 @@ def start_hotspot(cfg):
     ip = ap.ifconfig()[0]
     print("[main] Hotspot OK:", ip)
     print("[main] SSID:", ap_ssid)
-    print("[main] HTTP Config: http://", ip, sep='')
+    print("[main] HTTP Sync: http://", ip, sep='')
     print("[main] WebREPL: ws://", ip, ":8266", sep='')
     print("[main] (WebREPL ya iniciado por boot.py)")
     gc.collect()
 
-    ssids = scan_networks()
-    hotspot_server(ssids)
+    hotspot_server()
 
 # === WIFI + NTP ===
 def connect_wifi(cfg):
