@@ -120,15 +120,40 @@ def interactive_repl(ws):
         print(f"{GREEN}Desconectado{NC}")
 
 def main():
-    # Detectar modo
-    mode = sys.argv[1] if len(sys.argv) > 1 else "test"
-
+    # Parsear argumentos: [modo] [ip]
+    # Ejemplos:
+    #   python3 test_webrepl.py              # Modo test, buscar automáticamente
+    #   python3 test_webrepl.py repl          # Modo repl, buscar automáticamente
+    #   python3 test_webrepl.py 192.168.1.100 # Modo test, IP específica
+    #   python3 test_webrepl.py repl 192.168.1.100 # Modo repl, IP específica
+    
+    mode = "test"
+    ip = None
+    
+    if len(sys.argv) > 1:
+        arg1 = sys.argv[1]
+        # Verificar si es una IP (contiene puntos y números)
+        if '.' in arg1 and any(c.isdigit() for c in arg1):
+            ip = arg1
+            mode = "test"
+        elif arg1 in ["repl", "test"]:
+            mode = arg1
+            # Verificar si hay segundo argumento (IP)
+            if len(sys.argv) > 2:
+                ip = sys.argv[2]
+        else:
+            # Asumir que es IP si no es un modo conocido
+            ip = arg1
+    
     if mode == "repl":
         print(f"{BLUE}🔌 REPL Interactivo - Conectando...{NC}\n")
     else:
         print(f"{BLUE}🧪 Test de conexión WebREPL{NC}\n")
+    
+    if ip:
+        print(f"{BLUE}📍 Usando IP: {ip}{NC}\n")
 
-    ws = connect_webrepl()
+    ws = connect_webrepl(ip=ip)
     if not ws:
         print(f"\n{YELLOW}Verifica:{NC}")
         print("1. ESP8266 está encendido y conectado a WiFi")
