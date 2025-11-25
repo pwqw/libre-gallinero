@@ -9,7 +9,17 @@ import sys
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 from serial_monitor import SerialMonitor, find_port, GREEN, YELLOW, BLUE, RED, NC
+
+# Agregar tools/common al path para importar funciones comunes
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(script_dir)
+tools_common_path = os.path.join(project_dir, 'tools', 'common')
+if tools_common_path not in sys.path:
+    sys.path.insert(0, tools_common_path)
+
+from webrepl_client import MAX_FILE_SIZE, validate_file_size
 
 def load_env():
     """Carga variables desde archivo .env del repositorio"""
@@ -90,7 +100,7 @@ def main():
         print(f"{RED}❌ Puerto requerido{NC}")
         sys.exit(1)
 
-    print(f"{BLUE}[1/5] Puerto: {port}{NC}")
+    print(f"{BLUE}[1/6] Puerto: {port}{NC}")
 
     # Obtener credenciales WiFi (REQUERIDAS - mínimo indispensable)
     print(f"\n{YELLOW}⚠️  WiFi es REQUERIDO para el setup mínimo{NC}")
@@ -157,7 +167,7 @@ def main():
     print(f"{GREEN}✅ Credenciales guardadas en .env{NC}")
 
     # 1. Configurar webrepl_cfg.py
-    print(f"\n{BLUE}[2/5] Configurando WebREPL...{NC}")
+    print(f"\n{BLUE}[2/6] Configurando WebREPL...{NC}")
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
         # Usar repr() para escapar correctamente comillas y caracteres especiales
         f.write(f"PASS = {repr(webrepl_pass)}\n")
@@ -176,7 +186,7 @@ def main():
     print(f"{GREEN}✅ webrepl_cfg.py configurado{NC}")
 
     # 2. Copiar boot.py
-    print(f"\n{BLUE}[3/5] Copiando boot.py...{NC}")
+    print(f"\n{BLUE}[3/6] Copiando boot.py...{NC}")
     boot_path = os.path.join(project_dir, 'src', 'boot.py')
 
     if not os.path.exists(boot_path):
@@ -187,20 +197,28 @@ def main():
         sys.exit(1)
     print(f"{GREEN}✅ boot.py instalado{NC}")
 
-    # 3. Copiar main.py (REQUERIDO - lógica principal)
-    print(f"\n{BLUE}[4/5] Copiando main.py...{NC}")
-    main_path = os.path.join(project_dir, 'src', 'main.py')
-
-    if not os.path.exists(main_path):
-        print(f"{RED}❌ No se encontró {main_path}{NC}")
-        sys.exit(1)
-
-    if not run_ampy(['--port', port, 'put', main_path, 'main.py']):
-        sys.exit(1)
-    print(f"{GREEN}✅ main.py instalado{NC}")
+    # 3. Copiar módulos principales (REQUERIDO - lógica modularizada)
+    print(f"\n{BLUE}[4/6] Copiando módulos principales...{NC}")
+    modules = ['main.py', 'config.py', 'wifi.py', 'ntp.py', 'project_loader.py']
+    for module in modules:
+        module_path = os.path.join(project_dir, 'src', module)
+        if not os.path.exists(module_path):
+            print(f"{RED}❌ No se encontró {module_path}{NC}")
+            sys.exit(1)
+        
+        # Validar tamaño de archivo usando función común
+        is_valid, file_size, error_msg = validate_file_size(module_path)
+        if not is_valid:
+            print(f"{RED}❌ {module}: {error_msg}{NC}")
+            sys.exit(1)
+        
+        print(f"  Copiando {module} ({file_size} bytes)...")
+        if not run_ampy(['--port', port, 'put', module_path, module]):
+            sys.exit(1)
+    print(f"{GREEN}✅ Módulos principales instalados{NC}")
 
     # 4. Copiar .env (REQUERIDO - contiene credenciales WiFi)
-    print(f"\n{BLUE}[5/5] Copiando .env (WiFi + WebREPL)...{NC}")
+    print(f"\n{BLUE}[5/6] Copiando .env (WiFi + WebREPL)...{NC}")
     if not os.path.exists(env_path):
         print(f"{RED}❌ Error: .env no existe después de guardar credenciales{NC}")
         sys.exit(1)
@@ -218,7 +236,7 @@ def main():
     print(f"{BLUE}📋 Resumen:{NC}")
     print(f"   • webrepl_cfg.py: Configurado")
     print(f"   • boot.py: Instalado")
-    print(f"   • main.py: Instalado")
+    print(f"   • Módulos principales: main.py, config.py, wifi.py, ntp.py, project_loader.py")
     print(f"   • .env: Copiado (WiFi: {wifi_ssid})")
     print(f"\n{YELLOW}Próximos pasos:{NC}")
     print(f"  1. Reinicia el ESP8266")

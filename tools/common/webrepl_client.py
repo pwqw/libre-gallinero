@@ -26,7 +26,35 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Límite de tamaño de archivo (ESP8266 tiene memoria limitada)
-MAX_FILE_SIZE = 100 * 1024  # 100KB
+# Según documentación MicroPython 1.19 ESP8266: archivos >16KB pueden causar problemas de memoria
+# Usamos 8KB como límite conservador para evitar problemas de memoria
+MAX_FILE_SIZE = 8 * 1024  # 8KB - límite conservador para ESP8266
+
+
+def validate_file_size(file_path, max_size=None):
+    """
+    Valida que un archivo no exceda el tamaño máximo permitido.
+    Función común para evitar duplicación de código (DRY).
+    
+    Args:
+        file_path: Ruta al archivo a validar (Path o str)
+        max_size: Tamaño máximo en bytes (default: MAX_FILE_SIZE)
+    
+    Returns:
+        tuple: (is_valid: bool, file_size: int, error_message: str)
+    """
+    if max_size is None:
+        max_size = MAX_FILE_SIZE
+    
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return False, 0, f"Archivo no encontrado: {file_path}"
+    
+    file_size = file_path.stat().st_size
+    if file_size > max_size:
+        return False, file_size, f"Archivo demasiado grande: {file_size} bytes (máximo: {max_size} bytes)"
+    
+    return True, file_size, None
 
 
 def load_config(project_dir=None):

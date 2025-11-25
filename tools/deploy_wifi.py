@@ -25,7 +25,7 @@ from pathlib import Path
 script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 
-from common.webrepl_client import WebREPLClient, GREEN, YELLOW, BLUE, RED, NC
+from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
 
 
 def get_files_to_upload(project_dir):
@@ -42,11 +42,16 @@ def get_files_to_upload(project_dir):
     src_dir = Path(project_dir) / 'src'
     files = []
     
-    # Archivos principales de Python
-    main_files = ['boot.py', 'main.py', 'solar.py', 'logic.py']
+    # Archivos principales de Python (incluyendo módulos nuevos)
+    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'project_loader.py', 'solar.py', 'logic.py']
     for filename in main_files:
         local_path = src_dir / filename
         if local_path.exists():
+            is_valid, file_size, error_msg = validate_file_size(local_path)
+            if not is_valid:
+                print(f"{RED}⚠️  {filename}: {error_msg}{NC}")
+                print(f"   Omitiendo {filename} del deploy")
+                continue
             files.append((str(local_path), filename))
     
     # Templates si existen
@@ -122,9 +127,15 @@ def main():
     success = 0
     failed = 0
     
-    # Subir archivos
+    # Subir archivos con validación de tamaño
     for local_path, remote_name in files_to_upload:
-        if client.send_file(local_path, remote_name):
+        is_valid, file_size, error_msg = validate_file_size(local_path)
+        if not is_valid:
+            print(f"{RED}⚠️  {remote_name}: {error_msg}{NC}")
+            failed += 1
+            continue
+        
+        if client.send_file(local_path, remote_name, max_size=MAX_FILE_SIZE):
             success += 1
         else:
             failed += 1
