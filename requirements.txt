@@ -3,3 +3,4 @@ esptool
 python-dotenv
 pytest
 pyserial
+websocket-client

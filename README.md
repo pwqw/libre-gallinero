@@ -21,13 +21,22 @@ Para una descripción más detallada del proyecto, sus componentes y funcionalid
 - Editor de texto o IDE compatible (por ejemplo, [Thonny](https://thonny.org/) o [VS Code](https://code.visualstudio.com/)).
 
 ## Instalación rápida en Termux (Android)
-Si usas Termux en Android, puedes instalar y configurar todo automáticamente con el siguiente comando (requiere conexión a internet):
 
+### 1. Instalar dependencias en Termux
 ```bash
 curl -sL https://raw.githubusercontent.com/pwqw/libre-gallinero/main/termux/termux-setup.sh | sh
 ```
 
 Esto descargará y ejecutará el script de instalación, configurando el entorno y dejando todo listo para usar.
+
+### 2. Configurar credenciales
+```bash
+cd ~/libre-gallinero
+cp .env.example .env
+nano .env  # Edita con tus credenciales WiFi y WebREPL
+```
+
+**Nota:** Después del setup inicial (flasheo de MicroPython en PC), podrás desarrollar completamente sin cables usando WebREPL. Ver [Desarrollo desde Android](termux/README.md).
 
 ## Instalación
 1. Clona este repositorio:
@@ -52,19 +61,21 @@ Esto descargará y ejecutará el script de instalación, configurando el entorno
    - En Mac/Linux: Ejecuta `ls /dev/tty.*` y busca algo como `/dev/tty.usbserial-*`
    - En Windows: Usa el Administrador de dispositivos y busca el puerto COM asignado
 
-7. Configura la variable de entorno para ampy:
+7. Configura WebREPL en el ESP8266 (solo primera vez):
    ```bash
-   # En Mac/Linux (ajusta el puerto según tu sistema)
-   set -x AMPY_PORT /dev/tty.usbserial-XXXX
+   # Conecta por serial usando screen, miniterm o putty
+   screen /dev/tty.usbserial-XXXX 115200
 
-   # En Windows (ajusta el puerto según tu sistema)
-   set -x AMPY_PORT COM3
+   # En el REPL de MicroPython:
+   >>> import webrepl_setup
+   # Sigue las instrucciones para configurar password
+   # Conecta el ESP8266 a tu red WiFi
+   # Anota la IP asignada
    ```
 
 8. Sube los archivos al NodeMCU:
-   ```bash
-   ampy put -r src .
-   ```
+   - **Opción 1 (Más simple):** Abre https://micropython.org/webrepl/ en tu navegador, conecta a `ws://IP_ESP8266:8266` y sube archivos con el botón "Send a file"
+   - **Opción 2 (Automatizado):** Usa el script de deploy (ver [Desarrollo desde Android](termux/README.md))
 
 ## Estructura del Proyecto
 ```

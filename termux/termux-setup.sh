@@ -1,3 +1,4 @@
+#!/data/data/com.termux/files/usr/bin/bash
 # -*- coding: utf-8 -*-
 printf "
 ╔════════════════════════════════════════╗
@@ -15,14 +16,11 @@ cd "$HOME"
 # 1. Instalar las dependencias necesarias
 printf "\n📦 [1] Instalando dependencias necesarias... 🔧\n"
 pkg update -y
-pkg install -y root-repo
 pkg upgrade -y
 pkg install -y \
   git \
-  python python-pip \
-  termux-api termux-tools \
-  pkg-config rust clang make \
-  screen
+  python \
+  termux-api termux-tools
 
 # 2. Clonar el repositorio libre-gallinero (si no existe)
 printf "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄\n"
@@ -39,40 +37,35 @@ printf "\n\n🔄 [4] Actualizando el repositorio (forzado)... ⚡\n"
 git fetch --all
 git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 
-# 5. Crear el entorno virtual (si no existe)
-printf "\n\n🏗️  [5] Creando el entorno virtual (si no existe)... 🔨\n"
-if [ ! -d "env" ]; then
-  python -m venv env
-fi
-
-# 6. Activar el entorno virtual
-printf "\n\n🚀 [6] Activando el entorno virtual... ⚡\n"
-. "$HOME/libre-gallinero/env/bin/activate"
-
-# 7. Asegurarnos de que rustc y cargo estén en el PATH
-printf "\n\n🔍 [7] Verificando rustc y cargo en el PATH...\n"
-export PATH="$PATH:$PREFIX/bin:$HOME/.cargo/bin"
-if ! command -v rustc >/dev/null 2>&1; then
-  echo "Error: rustc no encontrado en PATH"
+# 5. Verificar que Python3 esté disponible
+printf "\n\n🐍 [5] Verificando Python3...\n"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "❌ Error: python3 no encontrado"
   exit 1
 fi
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "Error: cargo no encontrado en PATH"
-  exit 1
-fi
-echo "✅ rustc y cargo encontrados"
+echo "✅ Python3 encontrado: $(python3 --version)"
 
-# 8. Instalar las dependencias del proyecto
-printf "\n\n📦 [8] Instalando dependencias del proyecto... 🔧\n"
-pip install --upgrade pip
-pip install -r requirements.txt
+# 6. Instalar dependencias Python para WebREPL
+printf "\n\n📦 [6] Instalando dependencias Python (websocket-client)...\n"
+pip install websocket-client
 
-# 9. Crear el acceso directo del script shortcut.sh para Termux-Widget
-printf "\n\n[9] Creando acceso directo para Termux-Widget...\n"
+# 7. Crear los accesos directos para Termux-Widget
+printf "\n\n🔗 [7] Creando accesos directos para Termux-Widget...\n"
 if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
-cp -f "$HOME/libre-gallinero/termux/shortcut.sh" "$HOME/.shortcuts/Grabar placa"
-chmod +x "$HOME/.shortcuts/Grabar placa"
-printf "\n\n🐔  ¡Listo! Puedes usar el widget 'Grabar placa' en Termux-Widget. 🐔\n"
+cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy.sh" "$HOME/.shortcuts/Deploy ESP8266"
+chmod +x "$HOME/.shortcuts/Deploy ESP8266"
+cp -f "$HOME/libre-gallinero/termux/shortcuts/setup.sh" "$HOME/.shortcuts/Update Setup"
+chmod +x "$HOME/.shortcuts/Update Setup"
+cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy-test.sh" "$HOME/.shortcuts/Desplegar Prueba"
+chmod +x "$HOME/.shortcuts/Desplegar Prueba"
 
+printf "\n\n✅ ¡Setup completo!\n\n"
+printf "📋 Próximos pasos:\n"
+printf "  1. En PC/Mac: Flashear MicroPython en ESP8266 (solo primera vez)\n"
+printf "  2. En PC/Mac: Configurar WebREPL y conectar ESP8266 a WiFi\n"
+printf "  3. En termux/webrepl_deploy.py: Configurar WEBREPL_IP y WEBREPL_PASSWORD\n"
+printf "  4. Ejecutar: python3 termux/webrepl_deploy.py\n"
+printf "     o usar el shortcut 'Deploy ESP8266' en Termux Widget\n\n"
+printf "📖 Ver guía completa: termux/README.md\n\n"
