@@ -80,7 +80,7 @@ def main():
     # Importar módulos solo cuando se necesiten (lazy loading)
     import config
     cfg = config.load_config()
-    project = cfg.get('PROJECT', 'gallinero')
+    project = cfg.get('PROJECT', 'heladera')
     log(f"Configuración cargada")
     log(f"  SSID: {cfg.get('WIFI_SSID', 'N/A')}")
     log(f"  Proyecto: {project}")
