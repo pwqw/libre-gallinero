@@ -9,6 +9,7 @@ import sys
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from serial_monitor import SerialMonitor, find_port, GREEN, YELLOW, BLUE, RED, NC
 
@@ -37,6 +38,31 @@ def run_ampy(cmd):
         return False
     return True
 
+def verify_webrepl_config(port, password):
+    """
+    Verifica que webrepl_cfg.py se copió correctamente leyendo el archivo.
+    Esto es una verificación básica antes del reinicio.
+    """
+    print(f"\n{BLUE}🔍 Verificando configuración...{NC}")
+    
+    # Intentar leer webrepl_cfg.py desde el ESP8266
+    result = subprocess.run(
+        ['ampy', '--port', port, 'get', 'webrepl_cfg.py'],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        if f"PASS = '{password}'" in result.stdout:
+            print(f"{GREEN}✅ webrepl_cfg.py verificado correctamente{NC}")
+            return True
+        else:
+            print(f"{YELLOW}⚠️  webrepl_cfg.py existe pero password no coincide{NC}")
+            return False
+    else:
+        print(f"{YELLOW}⚠️  No se pudo verificar webrepl_cfg.py (puede ser normal){NC}")
+        return False
+
 def main():
     print(f"{BLUE}🔧 Setup WebREPL simplificado para ESP8266{NC}\n")
 
@@ -64,11 +90,44 @@ def main():
 
     print(f"{BLUE}[1/4] Puerto: {port}{NC}")
 
-    # Obtener password WebREPL
+    # Obtener password WebREPL (con validación de consistencia)
     webrepl_pass = env.get('WEBREPL_PASSWORD') or input(f"{YELLOW}Password WebREPL (default: admin): {NC}").strip() or "admin"
+    
+    # Validar password (no vacío, mínimo 4 caracteres recomendado)
+    if len(webrepl_pass) < 4:
+        print(f"{YELLOW}⚠️  Advertencia: Password muy corto (mínimo 4 caracteres recomendado){NC}")
+        confirm = input(f"{YELLOW}¿Continuar de todas formas? (s/N): {NC}").strip().lower()
+        if confirm != 's':
+            print(f"{RED}❌ Setup cancelado{NC}")
+            sys.exit(1)
+    
+    # Asegurar que .env tenga el password si existe
+    env_path = os.path.join(project_dir, '.env')
+    if os.path.exists(env_path):
+        # Leer .env y actualizar WEBREPL_PASSWORD si es necesario
+        env_lines = []
+        password_found = False
+        with open(env_path, 'r') as f:
+            for line in f:
+                if line.strip().startswith('WEBREPL_PASSWORD='):
+                    env_lines.append(f'WEBREPL_PASSWORD={webrepl_pass}\n')
+                    password_found = True
+                else:
+                    env_lines.append(line)
+        
+        # Si no existe, agregarlo
+        if not password_found:
+            env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={webrepl_pass}\n')
+        
+        # Escribir .env actualizado
+        with open(env_path, 'w') as f:
+            f.writelines(env_lines)
+        print(f"{GREEN}✅ .env actualizado con WEBREPL_PASSWORD{NC}")
 
     # 1. Configurar webrepl_cfg.py
     print(f"\n{BLUE}[2/4] Configurando WebREPL...{NC}")
+    print(f"   Password: {'*' * len(webrepl_pass)}")
+    
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
         f.write(f"PASS = '{webrepl_pass}'\n")
         webrepl_cfg = f.name
@@ -77,7 +136,10 @@ def main():
         os.unlink(webrepl_cfg)
         sys.exit(1)
     os.unlink(webrepl_cfg)
-    print(f"{GREEN}✅ webrepl_cfg.py configurado{NC}")
+    print(f"{GREEN}✅ webrepl_cfg.py configurado (password sincronizado){NC}")
+    
+    # Verificación opcional
+    verify_webrepl_config(port, webrepl_pass)
 
     # 2. Copiar boot.py COMPLETO desde src/
     print(f"\n{BLUE}[3/4] Copiando boot.py completo...{NC}")
@@ -91,30 +153,41 @@ def main():
         sys.exit(1)
     print(f"{GREEN}✅ boot.py instalado{NC}")
 
-    # 3. Copiar .env si existe
-    env_path = os.path.join(project_dir, '.env')
-
+    # 3. Copiar .env (ahora siempre existe porque lo actualizamos arriba)
+    print(f"\n{BLUE}[4/4] Copiando .env al ESP8266...{NC}")
     if os.path.exists(env_path):
-        print(f"\n{BLUE}[4/4] Copiando .env al ESP8266...{NC}")
         if run_ampy(['--port', port, 'put', env_path, '.env']):
-            print(f"{GREEN}✅ .env copiado{NC}")
+            print(f"{GREEN}✅ .env copiado (con WEBREPL_PASSWORD sincronizado){NC}")
         else:
             print(f"{YELLOW}⚠️  No se pudo copiar .env{NC}")
+            print(f"{YELLOW}   boot.py usará webrepl_cfg.py como fallback{NC}")
     else:
-        print(f"\n{BLUE}[4/4] .env no encontrado en repositorio{NC}")
-        print(f"{YELLOW}⚠️  boot.py usará .env.example o valores por defecto{NC}")
+        print(f"{YELLOW}⚠️  .env no encontrado (debería haberse creado arriba){NC}")
+        print(f"{YELLOW}   boot.py usará webrepl_cfg.py o valores por defecto{NC}")
 
-    # 4. Abrir monitor serial
+    # 4. Resumen y próximos pasos
     print(f"\n{GREEN}{'='*50}{NC}")
     print(f"{GREEN}✅ Setup completado!{NC}")
     print(f"{GREEN}{'='*50}{NC}\n")
-
-    print(f"{YELLOW}Próximos pasos:{NC}")
-    print(f"  1. Reinicia el ESP8266 (desconecta y reconecta)")
+    
+    print(f"{BLUE}📋 Resumen de configuración:{NC}")
+    print(f"   • webrepl_cfg.py: Password configurado")
+    print(f"   • boot.py: Instalado (usa password de .env o webrepl_cfg.py)")
+    print(f"   • .env: {'Copiado' if os.path.exists(env_path) else 'No disponible'}")
+    print(f"   • Password WebREPL: {'*' * len(webrepl_pass)}")
+    print(f"\n{YELLOW}Próximos pasos:{NC}")
+    print(f"  1. Reinicia el ESP8266 (desconecta y reconecta USB)")
     print(f"  2. Observa el proceso de bootstrapping abajo")
-    print(f"  3. Si WiFi conecta → anota la IP")
-    print(f"  4. Si WiFi falla → conecta al hotspot y configura")
-    print(f"  5. Presiona Ctrl+C para salir del monitor\n")
+    print(f"  3. Si WiFi conecta → anota la IP (aparecerá en el monitor)")
+    print(f"  4. Si WiFi falla → conecta al hotspot 'libre gallinero'")
+    print(f"  5. WebREPL estará disponible en:")
+    print(f"     • WiFi OK: ws://<IP>:8266")
+    print(f"     • Hotspot: ws://192.168.4.1:8266")
+    print(f"  6. Presiona Ctrl+C para salir del monitor\n")
+    
+    print(f"{BLUE}💡 Tip: Después del reinicio, puedes verificar WebREPL con:{NC}")
+    print(f"   python3 pc/test_webrepl.py")
+    print(f"   python3 pc/webrepl_deploy.py\n")
 
     input(f"{BLUE}Presiona Enter cuando hayas reiniciado el ESP8266...{NC}")
 

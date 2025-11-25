@@ -100,10 +100,34 @@ def setup_wifi(cfg, timeout=10):
     gc.collect()
     return False, wlan, None
 
-def start_webrepl():
-    """Inicia WebREPL"""
+def start_webrepl(cfg=None):
+    """
+    Inicia WebREPL con password explícito.
+    Prioridad: cfg['WEBREPL_PASSWORD'] -> webrepl_cfg.py -> sin password
+    """
     try:
-        webrepl.start()
+        password = None
+        
+        # Intento 1: Password desde config (.env)
+        if cfg and 'WEBREPL_PASSWORD' in cfg:
+            password = cfg['WEBREPL_PASSWORD']
+            print("[boot] WebREPL password desde .env")
+        
+        # Intento 2: webrepl_cfg.py (si no hay password en cfg)
+        if not password:
+            try:
+                import webrepl_cfg
+                password = webrepl_cfg.PASS
+                print("[boot] WebREPL password desde webrepl_cfg.py")
+            except:
+                pass
+        
+        # Iniciar WebREPL con password (si existe)
+        if password:
+            webrepl.start(password=password)
+        else:
+            webrepl.start()
+        
         print("[boot] WebREPL :8266")
         return True
     except Exception as e:
@@ -126,7 +150,8 @@ def boot():
 
         # IMPORTANTE: WebREPL se inicia SIEMPRE (WiFi OK o FAIL)
         # Si WiFi falla, main.py creará hotspot y WebREPL usará esa IP
-        start_webrepl()
+        # Pasa cfg para usar password del .env si está disponible
+        start_webrepl(cfg)
 
         if ok:
             print("[boot] WiFi OK:", ip)
