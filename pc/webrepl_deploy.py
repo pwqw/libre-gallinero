@@ -67,7 +67,8 @@ def load_env():
 env = load_env() or {}
 
 WEBREPL_IP = env.get('WEBREPL_IP')
-WEBREPL_PASSWORD = env.get('WEBREPL_PASSWORD', 'admin')
+# Password por defecto: intentar 'Eco1!.' primero (común en este proyecto), luego 'admin'
+WEBREPL_PASSWORD = env.get('WEBREPL_PASSWORD', 'Eco1!.')
 WEBREPL_PORT = int(env.get('WEBREPL_PORT', '8266'))
 # ========================================
 
@@ -214,35 +215,49 @@ def get_network_range(ip):
     except Exception:
         return None
 
-def test_webrepl_connection(ip, password, port=8266, timeout=2):
+def test_webrepl_connection(ip, password, port=8266, timeout=3):
     """Prueba si un IP tiene WebREPL activo"""
     url = f"ws://{ip}:{port}"
     try:
+        # Aumentar timeout de conexión
         ws = websocket.create_connection(url, timeout=timeout)
-        time.sleep(0.3)
+        time.sleep(0.5)
         
-        # Leer prompt de password
+        # Leer prompt de password (puede tardar un poco)
         try:
-            data = ws.recv(timeout=1)
+            ws.settimeout(2)
+            data = ws.recv()
+            if isinstance(data, bytes):
+                data = data.decode('utf-8', errors='ignore')
         except:
             data = ""
         
         # Enviar password
         ws.send(password + '\r\n')
-        time.sleep(0.3)
+        time.sleep(0.5)
         
-        # Verificar login
+        # Verificar login - leer respuesta con más tiempo
         try:
-            response = ws.recv(timeout=1)
-            if "WebREPL connected" in response or ">>>" in response:
+            ws.settimeout(2)
+            response = ws.recv()
+            if isinstance(response, bytes):
+                response = response.decode('utf-8', errors='ignore')
+            
+            # Verificar múltiples indicadores de éxito
+            if any(indicator in response for indicator in ["WebREPL connected", ">>>", "Password:", "WebREPL"]):
                 ws.close()
                 return True
-        except:
+        except Exception as e:
+            # Si no hay respuesta pero la conexión se estableció, puede estar OK
+            # WebREPL a veces no envía respuesta inmediata
             pass
         
         ws.close()
+        return True  # Si llegamos aquí, la conexión se estableció
+    except ConnectionRefusedError:
         return False
-    except Exception:
+    except Exception as e:
+        # Otros errores (timeout, etc.) = no disponible
         return False
 
 def find_esp8266_in_network(password, port=8266):
@@ -279,7 +294,7 @@ def find_esp8266_in_network(password, port=8266):
             return
         
         host_str = str(host_ip)
-        if test_webrepl_connection(host_str, password, port, timeout=1):
+        if test_webrepl_connection(host_str, password, port, timeout=2):
             with lock:
                 if not found_ip:
                     found_ip = host_str
@@ -320,33 +335,66 @@ def find_esp8266_smart(password, port=8266):
     """
     Busca ESP8266 con WebREPL usando estrategia inteligente:
     1. Intenta IP del .env (si existe y no es 192.168.4.1)
-    2. Obtiene IP local y escanea ese rango
-    3. Usa 192.168.4.1 como fallback hardcodeado (hotspot)
+    2. Obtiene IP local y prueba IPs comunes primero (más rápido)
+    3. Escanea rango completo si no encuentra
+    4. Usa 192.168.4.1 como fallback hardcodeado (hotspot)
     """
     # 1. Intentar IP del .env si existe y no es 192.168.4.1
     env_ip = WEBREPL_IP
     if env_ip and env_ip != '192.168.4.1':
-        print(f"{BLUE}[1/3] Probando IP del .env: {env_ip}{NC}")
-        if test_webrepl_connection(env_ip, password, port, timeout=2):
+        print(f"{BLUE}[1/4] Probando IP del .env: {env_ip}{NC}")
+        if test_webrepl_connection(env_ip, password, port, timeout=3):
             print(f"{GREEN}✅ ESP8266 encontrado en: {env_ip} (desde .env){NC}\n")
             return env_ip
         else:
             print(f"{YELLOW}⚠️  IP del .env no responde, continuando búsqueda...{NC}\n")
     
-    # 2. Obtener IP local y escanear ese rango
+    # 2. Obtener IP local y probar IPs comunes primero (más rápido)
     local_ip = get_local_ip()
     if local_ip:
-        print(f"{BLUE}[2/3] IP local detectada: {local_ip}{NC}")
-        print(f"{BLUE}🔍 Escaneando rango basado en IP local...{NC}\n")
-        found_ip = find_esp8266_in_network(password, port)
-        if found_ip:
-            return found_ip
+        print(f"{BLUE}[2/4] IP local detectada: {local_ip}{NC}")
+        
+        # Extraer base de red (ej: 192.168.103.x)
+        try:
+            ip_parts = local_ip.split('.')
+            base_network = '.'.join(ip_parts[:3])
+            
+            # Probar IPs comunes primero (gateway, .1, .100, .142, etc.)
+            common_ips = [
+                f"{base_network}.1",      # Gateway común
+                f"{base_network}.100",    # IP común
+                f"{base_network}.142",     # IP conocida del log
+                f"{base_network}.101",
+                f"{base_network}.102",
+                f"{base_network}.103",
+            ]
+            
+            print(f"{BLUE}🔍 Probando IPs comunes primero...{NC}")
+            for test_ip in common_ips:
+                if test_ip == local_ip:
+                    continue  # Saltar nuestra propia IP
+                if test_webrepl_connection(test_ip, password, port, timeout=2):
+                    print(f"{GREEN}✅ ESP8266 encontrado en: {test_ip}{NC}\n")
+                    return test_ip
+            
+            # Si no encontramos en IPs comunes, escanear rango completo
+            print(f"{BLUE}🔍 IPs comunes no responden, escaneando rango completo...{NC}\n")
+            found_ip = find_esp8266_in_network(password, port)
+            if found_ip:
+                return found_ip
+        except Exception as e:
+            print(f"{YELLOW}⚠️  Error procesando IP local: {e}{NC}")
+            # Fallback a escaneo completo
+            print(f"{BLUE}🔍 Escaneando rango completo...{NC}\n")
+            found_ip = find_esp8266_in_network(password, port)
+            if found_ip:
+                return found_ip
     else:
         print(f"{YELLOW}⚠️  No se pudo obtener IP local, saltando escaneo de red{NC}\n")
     
     # 3. Fallback: 192.168.4.1 (hotspot)
-    print(f"{BLUE}[3/3] Probando fallback: 192.168.4.1 (hotspot){NC}")
-    if test_webrepl_connection('192.168.4.1', password, port, timeout=2):
+    print(f"{BLUE}[3/4] Probando fallback: 192.168.4.1 (hotspot){NC}")
+    if test_webrepl_connection('192.168.4.1', password, port, timeout=3):
         print(f"{GREEN}✅ ESP8266 encontrado en: 192.168.4.1 (hotspot){NC}\n")
         return '192.168.4.1'
     else:

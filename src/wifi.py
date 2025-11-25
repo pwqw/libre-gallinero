@@ -162,9 +162,15 @@ def connect_wifi(cfg, wdt_callback=None):
                 import webrepl
                 webrepl.start()
                 log("✅ WebREPL iniciado - disponible en ws://{}:8266".format(ip))
+                log("✅ WebREPL escuchando en puerto 8266")
+            except ImportError as e:
+                log("❌ ERROR: Módulo webrepl no encontrado: {}".format(e))
+                log("   WebREPL no estará disponible - verifica el firmware MicroPython")
             except Exception as e:
-                log("⚠ No se pudo iniciar WebREPL: {}".format(e))
-                log("El sistema funcionará pero WebREPL no estará disponible")
+                log("❌ ERROR iniciando WebREPL: {}".format(e))
+                import sys
+                sys.print_exception(e)
+                log("   WebREPL no estará disponible")
             
             log("=== Conexión WiFi exitosa ===")
             return True
