@@ -1,8 +1,6 @@
 # wifi.py - WiFi connection manager
-# Minimal module for WiFi connectivity
 
 def log(msg):
-    """Escribe al serial de forma consistente"""
     print(f"[wifi] {msg}")
     try:
         import sys
@@ -12,31 +10,25 @@ def log(msg):
         pass
 
 def connect_wifi(cfg, wdt_callback=None):
-    """
-    Conecta WiFi en loop hasta que tenga éxito.
-    Intenta conectarse indefinidamente hasta lograr conexión.
-    
-    Args:
-        cfg: Configuración con credenciales WiFi
-        wdt_callback: Función opcional para alimentar el watchdog timer
-                     durante operaciones largas
-    """
+    """Conecta WiFi en loop hasta éxito"""
     import network
     import time
     
     log("=== Iniciando conexión WiFi ===")
-    
     wlan = network.WLAN(network.STA_IF)
-    log("Interfaz WiFi STA creada")
-    
     wlan.active(True)
-    log("Interfaz WiFi activada")
 
     if wlan.isconnected():
-        ip = wlan.ifconfig()[0]
+        ifconfig = wlan.ifconfig()
+        ip = ifconfig[0]
         log(f"WiFi ya conectado: {ip}")
-        log(f"Gateway: {wlan.ifconfig()[2]}")
-        log(f"DNS: {wlan.ifconfig()[3]}")
+        if ip and ip != '0.0.0.0':
+            try:
+                import webrepl
+                webrepl.start()
+                log("✅ WebREPL: ws://{}:8266".format(ip))
+            except:
+                pass
         return True
 
     ssid = cfg['WIFI_SSID']
@@ -48,11 +40,7 @@ def connect_wifi(cfg, wdt_callback=None):
     if isinstance(pw, bytes):
         pw = pw.decode('utf-8')
     
-    log(f"Buscando red: {repr(ssid)}")
-    log(f"Red oculta: {hidden}")
-    log(f"Longitud SSID: {len(ssid)} caracteres")
-    log(f"Longitud password: {len(pw)} caracteres")
-    log("Modo: Reintentos infinitos hasta conexión exitosa")
+    log(f"Red: {repr(ssid)} (oculta: {hidden})")
     
     attempt = 0
     
@@ -61,52 +49,37 @@ def connect_wifi(cfg, wdt_callback=None):
         log("")
         log(f"--- Intento de conexión #{attempt} ---")
         
-        # Alimentar WDT al inicio de cada intento
         if wdt_callback:
             try:
                 wdt_callback()
             except:
                 pass
         
-        if not hidden:
-            if attempt == 1 or attempt % 5 == 0:
-                log("Escaneando redes disponibles...")
-                try:
-                    networks = wlan.scan()
-                    log(f"Encontradas {len(networks)} redes")
-                    found = False
-                    for net in networks:
-                        net_ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]
-                        if net_ssid == ssid:
-                            found = True
-                            log(f"✓ Red encontrada: {ssid} (RSSI: {net[3]} dBm)")
-                            break
-                    
-                    if not found:
-                        log(f"⚠ Red no encontrada en escaneo: {ssid}")
-                        log("Intentando conexión directa (puede ser red oculta)...")
-                except Exception as e:
-                    log(f"Error escaneando redes: {e}")
-        else:
-            log("Red oculta detectada - saltando escaneo")
+        if not hidden and (attempt == 1 or attempt % 5 == 0):
+            try:
+                networks = wlan.scan()
+                found = False
+                for net in networks:
+                    net_ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]
+                    if net_ssid == ssid:
+                        found = True
+                        log(f"✓ Red encontrada: {ssid}")
+                        break
+                if not found:
+                    log(f"⚠ Red no encontrada, intentando conexión directa...")
+            except:
+                pass
 
         if wlan.status() == network.STAT_CONNECTING:
             log("Limpiando estado de conexión anterior...")
             wlan.disconnect()
             time.sleep(1)
         
-        log(f"Intentando conectar a {repr(ssid)}...")
+        log(f"Conectando a {repr(ssid)}...")
         try:
-            # Para redes ocultas en MicroPython ESP8266, simplemente usamos connect(ssid, pw)
-            # No se necesita especificar bssid, el sistema maneja redes ocultas automáticamente
-            if hidden:
-                log("Conectando a red oculta (sin escaneo previo)...")
             wlan.connect(ssid, pw)
-            log("Comando de conexión enviado")
         except Exception as e:
-            log(f"✗ Error al conectar: {e}")
-            log(f"Tipo de error: {type(e).__name__}")
-            log("Reintentando en 5 segundos...")
+            log(f"✗ Error: {e}")
             time.sleep(5)
             continue
 
@@ -117,7 +90,6 @@ def connect_wifi(cfg, wdt_callback=None):
             time.sleep(1)
             timeout += 1
             
-            # Alimentar WDT cada 5 segundos durante la espera
             if wdt_callback and timeout % 5 == 0:
                 try:
                     wdt_callback()
@@ -125,75 +97,51 @@ def connect_wifi(cfg, wdt_callback=None):
                     pass
             
             status = wlan.status()
-            status_names = {
-                1000: 'STAT_IDLE',
-                1001: 'STAT_CONNECTING',
-                1010: 'STAT_GOT_IP',
-                202: 'STAT_WRONG_PASSWORD',
-                201: 'STAT_NO_AP_FOUND',
-                200: 'STAT_CONNECT_FAIL'
-            }
-            status_name = status_names.get(status, f'STAT_UNKNOWN({status})')
+            status_map = {1000: 'IDLE', 1001: 'CONNECTING', 1010: 'GOT_IP',
+                          202: 'WRONG_PASSWORD', 201: 'NO_AP_FOUND', 200: 'CONNECT_FAIL'}
+            status_name = status_map.get(status, f'UNKNOWN({status})')
             
             if timeout % 5 == 0:
-                log(f"Esperando conexión... ({timeout}/{timeout_seconds}s) - Estado: {status_name}")
+                log(f"Esperando... ({timeout}/{timeout_seconds}s) - {status_name}")
             
             if status in [202, 201, 200]:
-                log(f"✗ Estado de error detectado: {status_name}")
+                log(f"✗ Error: {status_name}")
                 break
 
         if wlan.isconnected():
-            ip = wlan.ifconfig()[0]
-            gateway = wlan.ifconfig()[2]
-            dns = wlan.ifconfig()[3]
-            log("")
-            log("✓✓✓ WiFi CONECTADO EXITOSAMENTE ✓✓✓")
-            log(f"  IP: {ip}")
-            log(f"  Máscara: {wlan.ifconfig()[1]}")
-            log(f"  Gateway: {gateway}")
-            log(f"  DNS: {dns}")
-            log(f"  WebREPL: ws://{ip}:8266")
-            log(f"  Intentos necesarios: {attempt}")
+            # Esperar un momento para asegurar que la IP esté completamente asignada
+            time.sleep(0.5)
             
-            # Iniciar WebREPL ahora que tenemos IP de WiFi
-            # WebREPL se inicia aquí (no en boot.py) para asegurar que escuche en la IP correcta
-            log("Iniciando WebREPL en la nueva IP de WiFi...")
-            try:
-                import webrepl
-                webrepl.start()
-                log("✅ WebREPL iniciado - disponible en ws://{}:8266".format(ip))
-                log("✅ WebREPL escuchando en puerto 8266")
-            except ImportError as e:
-                log("❌ ERROR: Módulo webrepl no encontrado: {}".format(e))
-                log("   WebREPL no estará disponible - verifica el firmware MicroPython")
-            except Exception as e:
-                log("❌ ERROR iniciando WebREPL: {}".format(e))
-                import sys
-                sys.print_exception(e)
-                log("   WebREPL no estará disponible")
+            # Obtener configuración de red una sola vez
+            ifconfig = wlan.ifconfig()
+            ip = ifconfig[0]
+            netmask = ifconfig[1]
+            gateway = ifconfig[2]
+            dns = ifconfig[3]
             
-            log("=== Conexión WiFi exitosa ===")
-            return True
+            if ip == '0.0.0.0' or not ip:
+                time.sleep(2)
+                ifconfig = wlan.ifconfig()
+                ip = ifconfig[0]
+            
+            if ip and ip != '0.0.0.0':
+                log("")
+                log("✓✓✓ WiFi CONECTADO ✓✓✓")
+                log(f"  IP: {ip}")
+                log(f"  Gateway: {ifconfig[2]}")
+                log(f"  WebREPL: ws://{ip}:8266")
+                try:
+                    import webrepl
+                    webrepl.start()
+                    log("✅ WebREPL iniciado")
+                except Exception as e:
+                    log(f"⚠ WebREPL error: {e}")
+                return True
 
         status = wlan.status()
-        status_names = {
-            1000: 'STAT_IDLE',
-            1001: 'STAT_CONNECTING',
-            1010: 'STAT_GOT_IP',
-            202: 'STAT_WRONG_PASSWORD',
-            201: 'STAT_NO_AP_FOUND',
-            200: 'STAT_CONNECT_FAIL'
-        }
-        status_name = status_names.get(status, f'STAT_UNKNOWN({status})')
-        log(f"✗ Intento #{attempt} falló - Estado: {status_name}")
-        if status == 202:
-            log("⚠ Posible error de contraseña - verifica WIFI_PASSWORD en .env")
-        elif status == 201:
-            log("⚠ Red no encontrada - verifica WIFI_SSID y WIFI_HIDDEN en .env")
-        elif status == 200:
-            log("⚠ Fallo de conexión - verifica que la red esté disponible")
-        log("Reintentando en 5 segundos...")
-        # Alimentar WDT antes de esperar
+        status_map = {202: 'WRONG_PASSWORD', 201: 'NO_AP_FOUND', 200: 'CONNECT_FAIL'}
+        status_name = status_map.get(status, f'UNKNOWN({status})')
+        log(f"✗ Intento #{attempt} falló - {status_name}")
         if wdt_callback:
             try:
                 wdt_callback()
