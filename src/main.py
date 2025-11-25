@@ -16,14 +16,15 @@ import time
 from solar import calc_sun_times
 from logic import relay_ponedoras_state, relay_pollitos_state
 
-# Hardware
+# Hardware pins (definidos como constantes, inicialización dentro de main())
 RELAY1_PIN = 5   # D1 - Ponedoras
 RELAY2_PIN = 4   # D2 - Pollitos
 DHT_PIN = 14     # D5
 
-relay1 = machine.Pin(RELAY1_PIN, machine.Pin.OUT)
-relay2 = machine.Pin(RELAY2_PIN, machine.Pin.OUT)
-dht_sensor = dht.DHT22(machine.Pin(DHT_PIN))
+# Variables globales para hardware (se inicializan en main())
+relay1 = None
+relay2 = None
+dht_sensor = None
 
 # === CONFIGURACIÓN ===
 def parse_env(path):
@@ -95,28 +96,20 @@ def hotspot_server():
                     print('[main] Sync error:', e)
                     cl.send(b'HTTP/1.1 500\r\n\r\n{"status":"error"}')
             else:
-                # GET: página con JavaScript para sync
-                html = (
-                    'HTTP/1.1 200 OK\r\nContent-Type:text/html\r\n\r\n'
-                    '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-                    '<title>Libre-Gallinero</title></head>'
-                    '<body style="font-family:sans-serif;padding:2em;text-align:center">'
-                    '<h2>Libre-Gallinero</h2>'
-                    '<p id="status">Sincronizando hora...</p>'
-                    '<script>'
-                    'fetch("/settime",{'
-                    'method:"POST",'
-                    'headers:{"Content-Type":"application/json"},'
-                    'body:JSON.stringify({timestamp:Math.floor(Date.now()/1000)})'
-                    '}).then(r=>r.json()).then(d=>{'
-                    'document.getElementById("status").textContent='
-                    'd.status==="ok"?"Hora sincronizada correctamente":"Error al sincronizar";'
-                    '}).catch(()=>{'
-                    'document.getElementById("status").textContent="Error de conexión";'
-                    '});'
-                    '</script></body></html>'
-                )
-                cl.send(html.encode('utf-8'))
+                # GET: página con JavaScript para sync (optimizada para memoria)
+                h='HTTP/1.1 200 OK\r\nContent-Type:text/html\r\n\r\n'
+                h+='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Libre-Gallinero</title></head>'
+                h+='<body style="font-family:sans-serif;padding:2em;text-align:center">'
+                h+='<h2>Libre-Gallinero</h2><p id="s">Sincronizando hora...</p><script>'
+                h+='fetch("/settime",{method:"POST",headers:{"Content-Type":"application/json"},'
+                h+='body:JSON.stringify({timestamp:Math.floor(Date.now()/1000)})'
+                h+='}).then(r=>r.json()).then(d=>{'
+                h+='document.getElementById("s").textContent='
+                h+='d.status==="ok"?"Hora sincronizada":"Error";'
+                h+='}).catch(()=>{document.getElementById("s").textContent="Error conexión";});'
+                h+='</script></body></html>'
+                cl.send(h.encode('utf-8'))
+                gc.collect()
 
             cl.close()
         except Exception as e:
@@ -210,6 +203,9 @@ def get_local_time(cfg):
 # === CONTROL RELAYS ===
 def control_ponedoras(cfg):
     """Control relay ponedoras (solar)"""
+    global relay1
+    if relay1 is None:
+        return
     year, month, day, hour, minute = get_local_time(cfg)
     lat = float(cfg.get('LATITUDE', -32.5))
     lon = float(cfg.get('LONGITUDE', -60))
@@ -229,6 +225,9 @@ def control_ponedoras(cfg):
 
 def control_pollitos():
     """Control relay pollitos (temperatura)"""
+    global dht_sensor, relay2
+    if dht_sensor is None or relay2 is None:
+        return
     try:
         dht_sensor.measure()
         temp = dht_sensor.temperature()
@@ -240,23 +239,59 @@ def control_pollitos():
 
 # === MAIN LOOP ===
 def main():
+    """Función principal - DEBE ejecutarse manualmente vía WebREPL: import main"""
+    global relay1, relay2, dht_sensor
+    
     print('\n=== main.py ===')
+    gc.collect()
+    
+    # Inicializar hardware DENTRO de main() para ahorrar memoria
+    try:
+        relay1 = machine.Pin(RELAY1_PIN, machine.Pin.OUT)
+        relay2 = machine.Pin(RELAY2_PIN, machine.Pin.OUT)
+        print('[main] Relays inicializados')
+        gc.collect()
+    except Exception as e:
+        print('[main] Error inicializando relays:', e)
+        relay1 = None
+        relay2 = None
+    
+    # Inicializar DHT con protección (puede no estar conectado)
+    try:
+        dht_sensor = dht.DHT22(machine.Pin(DHT_PIN))
+        print('[main] DHT inicializado')
+        gc.collect()
+    except Exception as e:
+        print('[main] DHT no disponible (continuando sin sensor):', e)
+        dht_sensor = None
+        gc.collect()
+    
     cfg = load_config()
     print('[main] Config:', cfg.get('WIFI_SSID'))
+    gc.collect()
 
     if not connect_wifi(cfg):
         print('[main] Iniciando hotspot...')
+        gc.collect()
         start_hotspot(cfg)
         return
 
     if not sync_ntp():
         print('[main] Sin NTP, reloj puede estar mal')
+    gc.collect()
 
     print('[main] Loop principal...')
     while True:
         control_ponedoras(cfg)
         control_pollitos()
+        gc.collect()
         time.sleep(30)
 
-if __name__ == "__main__":
-    main()
+# IMPORTANTE: main.py NO se ejecuta automáticamente
+# Para iniciar manualmente vía WebREPL:
+#   >>> import main
+#   >>> main.main()
+# O simplemente:
+#   >>> from main import main; main()
+#
+# Esto garantiza que WebREPL siempre esté disponible después de boot.py
