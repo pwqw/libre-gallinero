@@ -38,8 +38,10 @@ def connect_wifi(cfg, wdt_callback=None):
     if wlan.isconnected():
         ifconfig = wlan.ifconfig()
         ip = ifconfig[0]
+        gateway = ifconfig[2]
         log(f"WiFi ya conectado: {ip}")
         if ip and ip != '0.0.0.0':
+            log(f"  Gateway (Router): {gateway}")
             try:
                 import webrepl
                 webrepl.start()
@@ -129,23 +131,30 @@ def connect_wifi(cfg, wdt_callback=None):
             # Esperar un momento para asegurar que la IP esté completamente asignada
             time.sleep(0.5)
             
-            # Obtener configuración de red una sola vez
+            # Obtener configuración de red
             ifconfig = wlan.ifconfig()
             ip = ifconfig[0]
             netmask = ifconfig[1]
             gateway = ifconfig[2]
             dns = ifconfig[3]
             
+            # Si la IP no está asignada, esperar y volver a obtener toda la configuración
             if ip == '0.0.0.0' or not ip:
+                log("⚠ IP aún no asignada, esperando...")
                 time.sleep(2)
                 ifconfig = wlan.ifconfig()
                 ip = ifconfig[0]
+                netmask = ifconfig[1]
+                gateway = ifconfig[2]
+                dns = ifconfig[3]
             
             if ip and ip != '0.0.0.0':
                 log("")
                 log("✓✓✓ WiFi CONECTADO ✓✓✓")
                 log(f"  IP: {ip}")
-                log(f"  Gateway: {ifconfig[2]}")
+                log(f"  Netmask: {netmask}")
+                log(f"  Gateway (Router): {gateway}")
+                log(f"  DNS: {dns}")
                 log(f"  WebREPL: ws://{ip}:8266")
                 try:
                     import webrepl
@@ -195,10 +204,12 @@ def monitor_wifi(check_interval=30):
             if wlan.isconnected():
                 ifconfig = wlan.ifconfig()
                 current_ip = ifconfig[0]
+                gateway = ifconfig[2]
                 
                 if current_ip and current_ip != '0.0.0.0':
                     if last_ip != current_ip:
                         log(f"✓ WiFi conectado: {current_ip}")
+                        log(f"  Gateway (Router): {gateway}")
                         last_ip = current_ip
                     disconnected_count = 0
                 else:
