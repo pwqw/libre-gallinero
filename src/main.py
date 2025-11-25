@@ -224,7 +224,11 @@ def sync_ntp():
 
 # === PROJECT LOADER ===
 def load_project(project_name, cfg):
-    """Load and run project-specific code"""
+    """
+    Load and run project-specific code (OPCIONAL)
+    Si el módulo no existe, simplemente no lo carga y continúa.
+    Esto permite que el setup inicial funcione sin los módulos del proyecto.
+    """
     log("=== Cargando proyecto ===")
     log(f"Proyecto: {project_name}")
     gc.collect()
@@ -244,15 +248,19 @@ def load_project(project_name, cfg):
             log("Ejecutando heladera.blink_led()...")
             heladera.blink_led()
         else:
-            log(f"✗ Proyecto desconocido: {project_name}")
+            log(f"⚠ Proyecto desconocido: {project_name}")
             log("Proyectos disponibles: gallinero, heladera")
+            log("Continuando sin cargar proyecto...")
     except ImportError as e:
-        log(f"✗ Error importando proyecto {project_name}: {e}")
-        log("Asegúrate de que el módulo existe en src/")
+        log(f"⚠ Módulo {project_name} no encontrado: {e}")
+        log("Esto es normal durante el setup inicial.")
+        log("El módulo se instalará durante el deploy por WiFi.")
+        log("Sistema funcionando en modo básico (WiFi + WebREPL)")
     except Exception as e:
         log(f"✗ Error ejecutando proyecto {project_name}: {e}")
         import sys
         sys.print_exception(e)
+        log("Continuando sin proyecto...")
 
 # === MAIN LOOP ===
 def main():
@@ -288,12 +296,18 @@ def main():
     gc.collect()
     log(f"Memoria libre después de WiFi/NTP: {gc.mem_free()} bytes")
 
-    # Estado: Cargando proyecto
+    # Estado: Cargando proyecto (OPCIONAL - solo si existe)
     log("")
     log("=" * 50)
-    log("Iniciando carga de proyecto")
+    log("Iniciando carga de proyecto (opcional)")
     log("=" * 50)
-    load_project(project, cfg)
+    try:
+        load_project(project, cfg)
+        log("✅ Proyecto cargado exitosamente")
+    except Exception as e:
+        log(f"⚠ No se pudo cargar el proyecto: {e}")
+        log("Sistema funcionando en modo básico (WiFi + WebREPL disponible)")
+        log("Puedes cargar el proyecto más tarde vía WebREPL o deploy")
 
 # Ejecutar main() automáticamente después de un delay para asegurar que WebREPL esté listo
 # El delay permite que WebREPL se inicie completamente antes de comenzar WiFi
