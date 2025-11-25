@@ -79,10 +79,8 @@ def load_config():
 # === WIFI + NTP ===
 def connect_wifi(cfg):
     """
-    Conecta WiFi siguiendo lógica:
-    1. Busca red por SSID
-    2. Intenta conectar con password
-    3. Si falla, retorna False
+    Conecta WiFi en loop hasta que tenga éxito.
+    Intenta conectarse indefinidamente hasta lograr conexión.
     """
     log("=== Iniciando conexión WiFi ===")
     
@@ -107,68 +105,83 @@ def connect_wifi(cfg):
 
     log(f"Buscando red: {ssid}")
     log(f"Red oculta: {hidden}")
+    log("Modo: Reintentos infinitos hasta conexión exitosa")
     
-    # Estado: Escaneando redes
-    log("Escaneando redes disponibles...")
-    try:
-        networks = wlan.scan()
-        log(f"Encontradas {len(networks)} redes")
-        found = False
-        for net in networks:
-            net_ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]
-            if net_ssid == ssid:
-                found = True
-                log(f"✓ Red encontrada: {ssid} (RSSI: {net[3]} dBm)")
-                break
+    attempt = 0
+    
+    # Loop infinito hasta conectar
+    while True:
+        attempt += 1
+        log("")
+        log(f"--- Intento de conexión #{attempt} ---")
         
-        if not found and not hidden:
-            log(f"⚠ Red no encontrada en escaneo: {ssid}")
-            log("Intentando conexión directa (puede ser red oculta)...")
-    except Exception as e:
-        log(f"Error escaneando redes: {e}")
+        # Estado: Escaneando redes (cada 5 intentos para ahorrar tiempo)
+        if attempt == 1 or attempt % 5 == 0:
+            log("Escaneando redes disponibles...")
+            try:
+                networks = wlan.scan()
+                log(f"Encontradas {len(networks)} redes")
+                found = False
+                for net in networks:
+                    net_ssid = net[0].decode('utf-8') if isinstance(net[0], bytes) else net[0]
+                    if net_ssid == ssid:
+                        found = True
+                        log(f"✓ Red encontrada: {ssid} (RSSI: {net[3]} dBm)")
+                        break
+                
+                if not found and not hidden:
+                    log(f"⚠ Red no encontrada en escaneo: {ssid}")
+                    log("Intentando conexión directa (puede ser red oculta)...")
+            except Exception as e:
+                log(f"Error escaneando redes: {e}")
 
-    # Estado: Intentando conectar
-    log(f"Intentando conectar a {ssid}...")
-    try:
-        if hidden:
-            wlan.connect(ssid, pw, -1)
-            log("Comando de conexión enviado (red oculta)")
-        else:
+        # Estado: Intentando conectar
+        log(f"Intentando conectar a {ssid}...")
+        try:
+            if hidden:
+                wlan.connect(ssid, pw, -1)
+                log("Comando de conexión enviado (red oculta)")
+            else:
+                wlan.connect(ssid, pw)
+                log("Comando de conexión enviado")
+        except TypeError:
             wlan.connect(ssid, pw)
-            log("Comando de conexión enviado")
-    except TypeError:
-        wlan.connect(ssid, pw)
-        log("Comando de conexión enviado (fallback)")
-    except Exception as e:
-        log(f"✗ Error al conectar: {e}")
-        return False
+            log("Comando de conexión enviado (fallback)")
+        except Exception as e:
+            log(f"✗ Error al conectar: {e}")
+            log("Reintentando en 5 segundos...")
+            time.sleep(5)
+            continue
 
-    # Estado: Esperando conexión
-    log("Esperando conexión (timeout: 15s)...")
-    timeout = 0
-    while not wlan.isconnected() and timeout < 15:
-        time.sleep(1)
-        timeout += 1
-        if timeout % 3 == 0:
-            log(f"Esperando conexión... ({timeout}/15s)")
+        # Estado: Esperando conexión
+        log("Esperando conexión (timeout: 15s)...")
+        timeout = 0
+        while not wlan.isconnected() and timeout < 15:
+            time.sleep(1)
+            timeout += 1
+            if timeout % 3 == 0:
+                log(f"Esperando conexión... ({timeout}/15s)")
 
-    # Estado: Verificando resultado
-    if wlan.isconnected():
-        ip = wlan.ifconfig()[0]
-        gateway = wlan.ifconfig()[2]
-        dns = wlan.ifconfig()[3]
-        log(f"✓ WiFi conectado exitosamente")
-        log(f"  IP: {ip}")
-        log(f"  Máscara: {wlan.ifconfig()[1]}")
-        log(f"  Gateway: {gateway}")
-        log(f"  DNS: {dns}")
-        log(f"  WebREPL: ws://{ip}:8266")
-        log("=== Conexión WiFi exitosa ===")
-        return True
+        # Estado: Verificando resultado
+        if wlan.isconnected():
+            ip = wlan.ifconfig()[0]
+            gateway = wlan.ifconfig()[2]
+            dns = wlan.ifconfig()[3]
+            log("")
+            log("✓✓✓ WiFi CONECTADO EXITOSAMENTE ✓✓✓")
+            log(f"  IP: {ip}")
+            log(f"  Máscara: {wlan.ifconfig()[1]}")
+            log(f"  Gateway: {gateway}")
+            log(f"  DNS: {dns}")
+            log(f"  WebREPL: ws://{ip}:8266")
+            log(f"  Intentos necesarios: {attempt}")
+            log("=== Conexión WiFi exitosa ===")
+            return True
 
-    log(f"✗ WiFi FAIL - No se pudo conectar a {ssid}")
-    log("=== Fallo de conexión WiFi ===")
-    return False
+        # Si no conectó, esperar antes de reintentar
+        log(f"✗ Intento #{attempt} falló - No se pudo conectar a {ssid}")
+        log("Reintentando en 5 segundos...")
+        time.sleep(5)
 
 def sync_ntp():
     """Sincroniza NTP"""
@@ -262,13 +275,9 @@ def main():
     gc.collect()
     log(f"Memoria libre después de cargar config: {gc.mem_free()} bytes")
 
-    # Estado: Conectando WiFi
-    wifi_connected = connect_wifi(cfg)
-    if not wifi_connected:
-        log("✗ No se pudo conectar a WiFi")
-        log("El dispositivo no puede continuar sin conexión WiFi")
-        log("Verifica la configuración de red y reinicia")
-        return
+    # Estado: Conectando WiFi (loop hasta éxito)
+    log("Iniciando conexión WiFi (reintentos infinitos)...")
+    connect_wifi(cfg)  # Esta función no retorna hasta conectar exitosamente
 
     # Estado: Sincronizando hora
     ntp_synced = sync_ntp()
