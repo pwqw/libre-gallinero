@@ -27,3 +27,4 @@ def relay_pollitos_state(temp, umbral=28):
     Retorna 1 para activar (abrir circuito, calefacción apagada), 0 para desactivar (cerrar circuito, calefacción encendida).
     """
     return 1 if temp > umbral else 0
+

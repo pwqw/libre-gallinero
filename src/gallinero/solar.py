@@ -40,3 +40,4 @@ def calc_sun_times(year, month, day, latitude=LATITUDE, longitude=LONGITUDE):
     sunrise = jd_to_hm(Jrise)
     sunset = jd_to_hm(Jset)
     return sunrise, sunset
+

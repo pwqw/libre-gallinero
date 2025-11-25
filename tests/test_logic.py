@@ -1,5 +1,5 @@
 import pytest
-from src.logic import relay_ponedoras_state, relay_pollitos_state
+from src.gallinero.logic import relay_ponedoras_state, relay_pollitos_state
 
 def test_relay_ponedoras_state():
     # Amanecer verano: 5, Amanecer actual: 7, Atardecer actual: 18, Atardecer verano: 21

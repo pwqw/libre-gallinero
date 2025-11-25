@@ -129,6 +129,65 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
         print(f"{RED}   ❌ Error: {e}{NC}")
         return False
 
+def send_directory(ws, local_dir, remote_base_dir):
+    """
+    Sube un directorio completo al ESP8266 usando WebREPL
+    """
+    if not os.path.isdir(local_dir):
+        print(f"{RED}❌ Directorio no encontrado: {local_dir}{NC}")
+        return 0, 0
+    
+    success = 0
+    failed = 0
+    
+    # Crear directorio remoto si no existe
+    if remote_base_dir:
+        try:
+            create_dir_code = f"""
+import os
+os.makedirs('{remote_base_dir}', exist_ok=True)
+print('✅ Directory created: {remote_base_dir}')
+"""
+            ws.send(create_dir_code + '\r\n')
+            time.sleep(0.3)
+        except:
+            pass
+    
+    # Recorrer archivos en el directorio
+    for root, dirs, files in os.walk(local_dir):
+        # Calcular ruta relativa
+        rel_path = os.path.relpath(root, local_dir)
+        if rel_path == '.':
+            remote_dir = remote_base_dir
+        else:
+            remote_dir = os.path.join(remote_base_dir, rel_path).replace('\\', '/')
+        
+        # Crear subdirectorio si es necesario
+        if remote_dir and remote_dir != '.':
+            try:
+                create_dir_code = f"""
+import os
+os.makedirs('{remote_dir}', exist_ok=True)
+print('✅ Directory created: {remote_dir}')
+"""
+                ws.send(create_dir_code + '\r\n')
+                time.sleep(0.3)
+            except:
+                pass
+        
+        # Subir archivos
+        for filename in files:
+            if filename.endswith('.py') or filename.endswith('.pyc'):
+                local_path = os.path.join(root, filename)
+                remote_path = os.path.join(remote_dir, filename).replace('\\', '/')
+                if send_file(ws, local_path, remote_path):
+                    success += 1
+                else:
+                    failed += 1
+                print()
+    
+    return success, failed
+
 def get_local_ip():
     """Obtiene la IP local de la máquina"""
     try:
@@ -384,20 +443,36 @@ def main():
     success = 0
     failed = 0
 
-    # Archivos a subir (boot.py y main.py consolidados)
+    # Archivos base a subir
     files_to_upload = [
-        ("src/boot.py", "boot.py"),      # Boot minimalista WiFi + WebREPL
-        ("src/main.py", "main.py"),      # Lógica principal + hotspot fallback
-        ("src/solar.py", "solar.py"),    # Cálculos solares
-        ("src/logic.py", "logic.py"),    # Control relays
+        ("src/boot.py", "boot.py"),      # Boot minimalista
+        ("src/main.py", "main.py"),      # WiFi/Hotspot manager + project loader
     ]
 
-    # Subir archivos
+    # Subir archivos base
     for local_path, remote_name in files_to_upload:
         if send_file(ws, local_path, remote_name):
             success += 1
         else:
             failed += 1
+        print()
+
+    # Subir directorio gallinero
+    gallinero_dir = os.path.join(project_dir, "src/gallinero")
+    if os.path.isdir(gallinero_dir):
+        print(f"{BLUE}📁 Subiendo gallinero/...{NC}\n")
+        s, f = send_directory(ws, gallinero_dir, "gallinero")
+        success += s
+        failed += f
+        print()
+
+    # Subir directorio heladera
+    heladera_dir = os.path.join(project_dir, "src/heladera")
+    if os.path.isdir(heladera_dir):
+        print(f"{BLUE}📁 Subiendo heladera/...{NC}\n")
+        s, f = send_directory(ws, heladera_dir, "heladera")
+        success += s
+        failed += f
         print()
 
     # Subir templates si existen

@@ -1,11 +1,10 @@
-# main.py - Lógica principal con hotspot fallback
-# Lee .env para configuración unificada
+# main.py - Generic WiFi/Hotspot Manager + Project Loader
+# Reusable across different projects (gallinero, heladera, etc.)
 
 try:
     import network
     import ntptime
     import machine
-    import dht
     import socket
     import gc
     gc.collect()
@@ -13,18 +12,6 @@ except ImportError:
     print("[main] ERROR: Módulos MicroPython no encontrados")
 
 import time
-from solar import calc_sun_times
-from logic import relay_ponedoras_state, relay_pollitos_state
-
-# Hardware pins (definidos como constantes, inicialización dentro de main())
-RELAY1_PIN = 5   # D1 - Ponedoras
-RELAY2_PIN = 4   # D2 - Pollitos
-DHT_PIN = 14     # D5
-
-# Variables globales para hardware (se inicializan en main())
-relay1 = None
-relay2 = None
-dht_sensor = None
 
 # === CONFIGURACIÓN ===
 def parse_env(path):
@@ -52,7 +39,8 @@ def load_config():
             'WIFI_PASSWORD': 'huevos1',
             'WIFI_HIDDEN': 'false',
             'LATITUDE': '-31.4167',
-            'LONGITUDE': '-64.1833'
+            'LONGITUDE': '-64.1833',
+            'PROJECT': 'gallinero'  # Default project
         }
     return cfg
 
@@ -192,82 +180,40 @@ def sync_ntp():
     print('[main] NTP FAIL')
     return False
 
-def get_local_time(cfg):
-    """Hora local ajustada por zona"""
-    tm = time.localtime()
-    lon = float(cfg.get('LONGITUDE', -60))
-    tz = int(round(lon / 15))
-    hour = (tm[3] + tz) % 24
-    return tm[0], tm[1], tm[2], hour, tm[4]
-
-# === CONTROL RELAYS ===
-def control_ponedoras(cfg):
-    """Control relay ponedoras (solar)"""
-    global relay1
-    if relay1 is None:
-        return
-    year, month, day, hour, minute = get_local_time(cfg)
-    lat = float(cfg.get('LATITUDE', -32.5))
-    lon = float(cfg.get('LONGITUDE', -60))
-
-    sunrise_summer, sunset_summer = calc_sun_times(year, 12, 21, lat, lon)
-    sunrise_today, sunset_today = calc_sun_times(year, month, day, lat, lon)
-
-    now_min = hour * 60 + minute
-    sunrise_summer_min = sunrise_summer[0] * 60 + sunrise_summer[1]
-    sunrise_today_min = sunrise_today[0] * 60 + sunrise_today[1]
-    sunset_today_min = sunset_today[0] * 60 + sunset_today[1]
-    sunset_summer_min = sunset_summer[0] * 60 + sunset_summer[1]
-
-    estado = relay_ponedoras_state(now_min, sunrise_summer_min, sunrise_today_min, sunset_today_min, sunset_summer_min)
-    relay1.value(estado)
-    print(f'[R1] now={now_min}, estado={estado}')
-
-def control_pollitos():
-    """Control relay pollitos (temperatura)"""
-    global dht_sensor, relay2
-    if dht_sensor is None or relay2 is None:
-        return
+# === PROJECT LOADER ===
+def load_project(project_name, cfg):
+    """Load and run project-specific code"""
+    print(f'[main] Cargando proyecto: {project_name}')
+    gc.collect()
+    
     try:
-        dht_sensor.measure()
-        temp = dht_sensor.temperature()
-        estado = relay_pollitos_state(temp)
-        relay2.value(estado)
-        print(f'[R2] temp={temp}°C, estado={estado}')
+        if project_name == 'gallinero':
+            import gallinero
+            gallinero.run(cfg)
+        elif project_name == 'heladera':
+            import heladera
+            heladera.blink_led()
+        else:
+            print(f'[main] Proyecto desconocido: {project_name}')
+            print('[main] Proyectos disponibles: gallinero, heladera')
+    except ImportError as e:
+        print(f'[main] Error importando proyecto {project_name}: {e}')
+        print('[main] Asegúrate de que el módulo existe en src/')
     except Exception as e:
-        print('[R2] DHT error:', e)
+        print(f'[main] Error ejecutando proyecto {project_name}: {e}')
+        import sys
+        sys.print_exception(e)
 
 # === MAIN LOOP ===
 def main():
     """Función principal - DEBE ejecutarse manualmente vía WebREPL: import main"""
-    global relay1, relay2, dht_sensor
-    
     print('\n=== main.py ===')
     gc.collect()
     
-    # Inicializar hardware DENTRO de main() para ahorrar memoria
-    try:
-        relay1 = machine.Pin(RELAY1_PIN, machine.Pin.OUT)
-        relay2 = machine.Pin(RELAY2_PIN, machine.Pin.OUT)
-        print('[main] Relays inicializados')
-        gc.collect()
-    except Exception as e:
-        print('[main] Error inicializando relays:', e)
-        relay1 = None
-        relay2 = None
-    
-    # Inicializar DHT con protección (puede no estar conectado)
-    try:
-        dht_sensor = dht.DHT22(machine.Pin(DHT_PIN))
-        print('[main] DHT inicializado')
-        gc.collect()
-    except Exception as e:
-        print('[main] DHT no disponible (continuando sin sensor):', e)
-        dht_sensor = None
-        gc.collect()
-    
     cfg = load_config()
+    project = cfg.get('PROJECT', 'gallinero')
     print('[main] Config:', cfg.get('WIFI_SSID'))
+    print('[main] Proyecto:', project)
     gc.collect()
 
     if not connect_wifi(cfg):
@@ -280,12 +226,8 @@ def main():
         print('[main] Sin NTP, reloj puede estar mal')
     gc.collect()
 
-    print('[main] Loop principal...')
-    while True:
-        control_ponedoras(cfg)
-        control_pollitos()
-        gc.collect()
-        time.sleep(30)
+    # Load and run project-specific code
+    load_project(project, cfg)
 
 # IMPORTANTE: main.py NO se ejecuta automáticamente
 # Para iniciar manualmente vía WebREPL:

@@ -1,5 +1,5 @@
 import pytest
-from src.solar import calc_sun_times, LATITUDE, LONGITUDE
+from src.gallinero.solar import calc_sun_times, LATITUDE, LONGITUDE
 
 
 def minutes_from_tuple(t):
