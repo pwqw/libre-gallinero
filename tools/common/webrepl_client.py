@@ -455,15 +455,21 @@ class WebREPLClient:
                     dirs_to_create.append(current_path)
                 
                 # Crear código para crear directorios (compatible con MicroPython)
+                # Usar OSError con código de error específico para EEXIST
                 dir_lines = ["import os"]
                 for dir_path in dirs_to_create:
                     dir_lines.append(f"try:")
                     dir_lines.append(f"    os.mkdir('{dir_path}')")
-                    dir_lines.append(f"except:")
-                    dir_lines.append(f"    pass")
+                    dir_lines.append(f"    print(f'📁 Directorio creado: {dir_path}')")
+                    dir_lines.append(f"except OSError as e:")
+                    dir_lines.append(f"    if e.args[0] != 17:  # 17 = EEXIST (ya existe)")
+                    dir_lines.append(f"        raise")
+                    dir_lines.append(f"    print(f'📁 Directorio ya existe: {dir_path}')")
                 dir_creation = "\n".join(dir_lines) + "\n"
             
-            upload_code = f"""{dir_creation}with open('{remote_name}', 'w') as f:
+            upload_code = f"""{dir_creation}import gc
+gc.collect()
+with open('{remote_name}', 'w') as f:
     f.write('''{content_escaped}''')
 print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
 """
