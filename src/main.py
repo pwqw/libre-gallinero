@@ -11,33 +11,8 @@ def log(msg):
     if hasattr(sys.stdout, 'flush'):
         sys.stdout.flush()
 
-log("=== Iniciando main.py ===")
-
-# Estado: Importando módulos
-try:
-    import network
-    log("Módulo network importado")
-except ImportError as e:
-    log(f"ERROR: network no encontrado: {e}")
-
-try:
-    import ntptime
-    log("Módulo ntptime importado")
-except ImportError as e:
-    log(f"ERROR: ntptime no encontrado: {e}")
-
-try:
-    import machine
-    log("Módulo machine importado")
-except ImportError as e:
-    log(f"ERROR: machine no encontrado: {e}")
-
-try:
-    import gc
-    gc.collect()
-    log("GC inicializado y limpiado")
-except ImportError as e:
-    log(f"ERROR: gc no encontrado: {e}")
+# NO ejecutar código al importar para ahorrar memoria
+# Solo definir funciones, la ejecución se hará en main()
 
 # === CONFIGURACIÓN ===
 def parse_env(path):
@@ -84,6 +59,9 @@ def connect_wifi(cfg):
     Conecta WiFi en loop hasta que tenga éxito.
     Intenta conectarse indefinidamente hasta lograr conexión.
     """
+    # Importar network solo cuando se necesite (lazy loading)
+    import network
+    
     log("=== Iniciando conexión WiFi ===")
     
     # Estado: Activando interfaz WiFi
@@ -250,11 +228,14 @@ def connect_wifi(cfg):
 
 def sync_ntp():
     """Sincroniza NTP"""
+    # Importar módulos solo cuando se necesiten (lazy loading)
+    import ntptime
+    import utime
+    
     log("=== Sincronizando hora NTP ===")
     
     # Estado: Obteniendo hora actual antes de sync
     try:
-        import utime
         tm_before = utime.localtime()
         log(f"Hora actual (antes): {tm_before[3]:02d}:{tm_before[4]:02d}:{tm_before[5]:02d}")
     except:
@@ -292,6 +273,9 @@ def load_project(project_name, cfg):
     Si el módulo no existe, simplemente no lo carga y continúa.
     Esto permite que el setup inicial funcione sin los módulos del proyecto.
     """
+    # Importar gc solo cuando se necesite (lazy loading)
+    import gc
+    
     log("=== Cargando proyecto ===")
     log(f"Proyecto: {project_name}")
     gc.collect()
@@ -327,7 +311,42 @@ def load_project(project_name, cfg):
 
 # === MAIN LOOP ===
 def main():
-    """Función principal - DEBE ejecutarse manualmente vía WebREPL: import main"""
+    """Función principal - Se ejecuta automáticamente desde boot.py"""
+    # Importar módulos solo cuando se necesiten (lazy loading)
+    try:
+        import gc
+        gc.collect()
+    except:
+        pass
+    
+    log("=== Iniciando main.py ===")
+    
+    # Estado: Importando módulos (solo cuando se necesitan)
+    try:
+        import network
+        log("Módulo network importado")
+    except ImportError as e:
+        log(f"ERROR: network no encontrado: {e}")
+        return
+
+    try:
+        import ntptime
+        log("Módulo ntptime importado")
+    except ImportError as e:
+        log(f"ERROR: ntptime no encontrado: {e}")
+
+    try:
+        import machine
+        log("Módulo machine importado")
+    except ImportError as e:
+        log(f"ERROR: machine no encontrado: {e}")
+
+    try:
+        gc.collect()
+        log("GC inicializado y limpiado")
+    except ImportError as e:
+        log(f"ERROR: gc no encontrado: {e}")
+    
     log("")
     log("=" * 50)
     log("Iniciando función main()")
@@ -372,16 +391,6 @@ def main():
         log("Sistema funcionando en modo básico (WiFi + WebREPL disponible)")
         log("Puedes cargar el proyecto más tarde vía WebREPL o deploy")
 
-# Ejecutar main() automáticamente después de un delay para asegurar que WebREPL esté listo
-# El delay permite que WebREPL se inicie completamente antes de comenzar WiFi
-log("Esperando 2 segundos para que WebREPL se inicie completamente...")
-time.sleep(2)
-log("Iniciando main() automáticamente...")
-try:
-    main()
-except Exception as e:
-    log(f"Error en main(): {e}")
-    import sys
-    sys.print_exception(e)
-    log("El sistema seguirá funcionando, pero WiFi no se conectará automáticamente")
-    log("Puedes ejecutar manualmente: import main; main.main()")
+# NO ejecutar main() automáticamente aquí para ahorrar memoria
+# boot.py se encargará de ejecutar main() después de un delay
+# Esto permite que main.py se importe sin consumir toda la memoria de inmediato
