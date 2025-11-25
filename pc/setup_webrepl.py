@@ -27,6 +27,36 @@ def load_env():
                     env_vars[key.strip()] = value.strip().strip('"').strip("'")
     return env_vars
 
+def escape_env_value(value):
+    """
+    Escapa un valor para escribir en .env
+    Agrega comillas si el valor contiene espacios o caracteres especiales
+    """
+    if not value:
+        return '""'
+    
+    # Si el valor ya está entre comillas, removerlas primero
+    value = value.strip().strip('"').strip("'")
+    
+    # Valores que necesitan comillas:
+    # - Contienen espacios
+    # - Contienen caracteres especiales que pueden causar problemas
+    # - Empiezan o terminan con espacios (aunque ya los removimos)
+    needs_quotes = (
+        ' ' in value or
+        '\t' in value or
+        '\n' in value or
+        value.startswith('#') or
+        any(char in value for char in ['~', '(', ')', '[', ']', '{', '}', '$', '`', '\\'])
+    )
+    
+    if needs_quotes:
+        # Escapar comillas dobles dentro del valor
+        value_escaped = value.replace('"', '\\"')
+        return f'"{value_escaped}"'
+    else:
+        return value
+
 def run_ampy(cmd):
     """Ejecuta comando ampy"""
     result = subprocess.run(['ampy'] + cmd, capture_output=True, text=True)
@@ -73,6 +103,14 @@ def main():
     if not wifi_password:
         print(f"{RED}❌ WiFi Password es requerido{NC}")
         sys.exit(1)
+    
+    # Obtener si la red es oculta
+    wifi_hidden = env.get('WIFI_HIDDEN', '').lower()
+    if not wifi_hidden:
+        hidden_input = input(f"{YELLOW}¿Red WiFi oculta? (s/n, default: n): {NC}").strip().lower()
+        wifi_hidden = 'true' if hidden_input in ['s', 'si', 'sí', 'y', 'yes'] else 'false'
+    else:
+        wifi_hidden = 'true' if wifi_hidden == 'true' else 'false'
 
     # Obtener password WebREPL
     webrepl_pass = env.get('WEBREPL_PASSWORD') or input(f"{YELLOW}Password WebREPL (default: admin): {NC}").strip() or "admin"
@@ -82,30 +120,36 @@ def main():
     env_lines = []
     wifi_ssid_found = False
     wifi_password_found = False
+    wifi_hidden_found = False
     password_found = False
     
     if os.path.exists(env_path):
         with open(env_path, 'r') as f:
             for line in f:
                 if line.strip().startswith('WIFI_SSID='):
-                    env_lines.append(f'WIFI_SSID={wifi_ssid}\n')
+                    env_lines.append(f'WIFI_SSID={escape_env_value(wifi_ssid)}\n')
                     wifi_ssid_found = True
                 elif line.strip().startswith('WIFI_PASSWORD='):
-                    env_lines.append(f'WIFI_PASSWORD={wifi_password}\n')
+                    env_lines.append(f'WIFI_PASSWORD={escape_env_value(wifi_password)}\n')
                     wifi_password_found = True
+                elif line.strip().startswith('WIFI_HIDDEN='):
+                    env_lines.append(f'WIFI_HIDDEN={escape_env_value(wifi_hidden)}\n')
+                    wifi_hidden_found = True
                 elif line.strip().startswith('WEBREPL_PASSWORD='):
-                    env_lines.append(f'WEBREPL_PASSWORD={webrepl_pass}\n')
+                    env_lines.append(f'WEBREPL_PASSWORD={escape_env_value(webrepl_pass)}\n')
                     password_found = True
                 else:
                     env_lines.append(line)
     
     # Agregar configuraciones faltantes
     if not wifi_ssid_found:
-        env_lines.append(f'\n# WiFi Configuration (REQUERIDO)\nWIFI_SSID={wifi_ssid}\n')
+        env_lines.append(f'\n# WiFi Configuration (REQUERIDO)\nWIFI_SSID={escape_env_value(wifi_ssid)}\n')
     if not wifi_password_found:
-        env_lines.append(f'WIFI_PASSWORD={wifi_password}\n')
+        env_lines.append(f'WIFI_PASSWORD={escape_env_value(wifi_password)}\n')
+    if not wifi_hidden_found:
+        env_lines.append(f'WIFI_HIDDEN={escape_env_value(wifi_hidden)}\n')
     if not password_found:
-        env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={webrepl_pass}\n')
+        env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={escape_env_value(webrepl_pass)}\n')
     
     with open(env_path, 'w') as f:
         f.writelines(env_lines)

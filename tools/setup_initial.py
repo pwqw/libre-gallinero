@@ -37,6 +37,36 @@ def load_env(project_dir):
     return env_vars
 
 
+def escape_env_value(value):
+    """
+    Escapa un valor para escribir en .env
+    Agrega comillas si el valor contiene espacios o caracteres especiales
+    """
+    if not value:
+        return '""'
+    
+    # Si el valor ya está entre comillas, removerlas primero
+    value = value.strip().strip('"').strip("'")
+    
+    # Valores que necesitan comillas:
+    # - Contienen espacios
+    # - Contienen caracteres especiales que pueden causar problemas
+    needs_quotes = (
+        ' ' in value or
+        '\t' in value or
+        '\n' in value or
+        value.startswith('#') or
+        any(char in value for char in ['~', '(', ')', '[', ']', '{', '}', '$', '`', '\\'])
+    )
+    
+    if needs_quotes:
+        # Escapar comillas dobles dentro del valor
+        value_escaped = value.replace('"', '\\"')
+        return f'"{value_escaped}"'
+    else:
+        return value
+
+
 def run_ampy(cmd):
     """Ejecuta comando ampy"""
     result = subprocess.run(['ampy'] + cmd, capture_output=True, text=True)
@@ -113,13 +143,13 @@ def main():
         with open(env_path, 'r') as f:
             for line in f:
                 if line.strip().startswith('WEBREPL_PASSWORD='):
-                    env_lines.append(f'WEBREPL_PASSWORD={webrepl_pass}\n')
+                    env_lines.append(f'WEBREPL_PASSWORD={escape_env_value(webrepl_pass)}\n')
                     password_found = True
                 else:
                     env_lines.append(line)
         
         if not password_found:
-            env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={webrepl_pass}\n')
+            env_lines.append(f'\n# WebREPL Configuration\nWEBREPL_PASSWORD={escape_env_value(webrepl_pass)}\n')
         
         with open(env_path, 'w') as f:
             f.writelines(env_lines)
