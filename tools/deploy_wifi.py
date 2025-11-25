@@ -61,13 +61,24 @@ def get_files_to_upload(project_dir, project_name=None):
         project_dir_path = src_dir / project_name
         if project_dir_path.exists() and project_dir_path.is_dir():
             print(f"{BLUE}📦 Incluyendo archivos del proyecto: {project_name}{NC}")
+            
+            # Primero subir __init__.py para que el directorio sea un paquete Python válido
+            init_file = project_dir_path / '__init__.py'
+            if init_file.exists():
+                remote_name = f"{project_name}/__init__.py"
+                is_valid, file_size, error_msg = validate_file_size(init_file)
+                if is_valid:
+                    files.append((str(init_file), remote_name))
+                    print(f"   ✓ {remote_name} (__init__.py primero)")
+                else:
+                    print(f"{RED}⚠️  __init__.py: {error_msg}{NC}")
+            
+            # Luego subir el resto de archivos
             for py_file in project_dir_path.glob('*.py'):
                 if py_file.name == '__init__.py':
-                    # __init__.py va en el directorio del proyecto
-                    remote_name = f"{project_name}/__init__.py"
-                else:
-                    remote_name = f"{project_name}/{py_file.name}"
+                    continue  # Ya lo agregamos arriba
                 
+                remote_name = f"{project_name}/{py_file.name}"
                 is_valid, file_size, error_msg = validate_file_size(py_file)
                 if not is_valid:
                     print(f"{RED}⚠️  {py_file.name}: {error_msg}{NC}")
