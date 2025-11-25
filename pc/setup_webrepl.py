@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Setup WebREPL simplificado para ESP8266
-Copia boot.py, webrepl_cfg.py y .env al ESP8266.
+Copia boot.py, main.py, webrepl_cfg.py y .env al ESP8266.
 Luego abre monitor serial para observar el proceso de bootstrapping.
 """
 
@@ -60,7 +60,7 @@ def main():
         print(f"{RED}❌ Puerto requerido{NC}")
         sys.exit(1)
 
-    print(f"{BLUE}[1/4] Puerto: {port}{NC}")
+    print(f"{BLUE}[1/5] Puerto: {port}{NC}")
 
     # Obtener credenciales WiFi (REQUERIDAS - mínimo indispensable)
     print(f"\n{YELLOW}⚠️  WiFi es REQUERIDO para el setup mínimo{NC}")
@@ -113,7 +113,7 @@ def main():
     print(f"{GREEN}✅ Credenciales guardadas en .env{NC}")
 
     # 1. Configurar webrepl_cfg.py
-    print(f"\n{BLUE}[2/4] Configurando WebREPL...{NC}")
+    print(f"\n{BLUE}[2/5] Configurando WebREPL...{NC}")
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
         # Usar repr() para escapar correctamente comillas y caracteres especiales
         f.write(f"PASS = {repr(webrepl_pass)}\n")
@@ -132,7 +132,7 @@ def main():
     print(f"{GREEN}✅ webrepl_cfg.py configurado{NC}")
 
     # 2. Copiar boot.py
-    print(f"\n{BLUE}[3/4] Copiando boot.py...{NC}")
+    print(f"\n{BLUE}[3/5] Copiando boot.py...{NC}")
     boot_path = os.path.join(project_dir, 'src', 'boot.py')
 
     if not os.path.exists(boot_path):
@@ -143,8 +143,20 @@ def main():
         sys.exit(1)
     print(f"{GREEN}✅ boot.py instalado{NC}")
 
-    # 3. Copiar .env (REQUERIDO - contiene credenciales WiFi)
-    print(f"\n{BLUE}[4/4] Copiando .env (WiFi + WebREPL)...{NC}")
+    # 3. Copiar main.py (REQUERIDO - lógica principal)
+    print(f"\n{BLUE}[4/5] Copiando main.py...{NC}")
+    main_path = os.path.join(project_dir, 'src', 'main.py')
+
+    if not os.path.exists(main_path):
+        print(f"{RED}❌ No se encontró {main_path}{NC}")
+        sys.exit(1)
+
+    if not run_ampy(['--port', port, 'put', main_path, 'main.py']):
+        sys.exit(1)
+    print(f"{GREEN}✅ main.py instalado{NC}")
+
+    # 4. Copiar .env (REQUERIDO - contiene credenciales WiFi)
+    print(f"\n{BLUE}[5/5] Copiando .env (WiFi + WebREPL)...{NC}")
     if not os.path.exists(env_path):
         print(f"{RED}❌ Error: .env no existe después de guardar credenciales{NC}")
         sys.exit(1)
@@ -162,6 +174,7 @@ def main():
     print(f"{BLUE}📋 Resumen:{NC}")
     print(f"   • webrepl_cfg.py: Configurado")
     print(f"   • boot.py: Instalado")
+    print(f"   • main.py: Instalado")
     print(f"   • .env: Copiado (WiFi: {wifi_ssid})")
     print(f"\n{YELLOW}Próximos pasos:{NC}")
     print(f"  1. Reinicia el ESP8266")
