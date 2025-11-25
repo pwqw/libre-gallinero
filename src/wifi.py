@@ -38,10 +38,18 @@ def connect_wifi(cfg, wdt_callback=None):
     if wlan.isconnected():
         ifconfig = wlan.ifconfig()
         ip = ifconfig[0]
+        netmask = ifconfig[1]
         gateway = ifconfig[2]
+        dns = ifconfig[3]
         log(f"WiFi ya conectado: {ip}")
         if ip and ip != '0.0.0.0':
+            log(f"  Netmask: {netmask}")
             log(f"  Gateway (Router): {gateway}")
+            log(f"  DNS: {dns}")
+            # Advertencia si la IP no está en el rango esperado (192.168.0.x)
+            if not ip.startswith('192.168.0.'):
+                log(f"  ⚠ ADVERTENCIA: IP fuera del rango esperado (192.168.0.x)")
+                log(f"  ⚠ Puede estar conectado a una red diferente")
             try:
                 import webrepl
                 webrepl.start()
@@ -155,6 +163,10 @@ def connect_wifi(cfg, wdt_callback=None):
                 log(f"  Netmask: {netmask}")
                 log(f"  Gateway (Router): {gateway}")
                 log(f"  DNS: {dns}")
+                # Advertencia si la IP no está en el rango esperado (192.168.0.x)
+                if not ip.startswith('192.168.0.'):
+                    log(f"  ⚠ ADVERTENCIA: IP fuera del rango esperado (192.168.0.x)")
+                    log(f"  ⚠ Puede estar conectado a una red diferente o router con múltiples subredes")
                 log(f"  WebREPL: ws://{ip}:8266")
                 try:
                     import webrepl

@@ -32,7 +32,7 @@ def main():
     try:
         from machine import WDT
         # Extender timeout a 60 segundos para operaciones de WiFi/NTP
-        _wdt = WDT(timeout=60000)  # 60 segundos
+        _wdt = WDT(60000)  # 60 segundos (argumento posicional, no con nombre)
         log("✅ Watchdog Timer activado (60s timeout)")
     except Exception as e:
         log(f"⚠ WDT no disponible: {e}")

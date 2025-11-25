@@ -4,7 +4,7 @@
 # Watchdog Timer: protege contra bloqueos (reinicia si > 30s sin respuesta)
 try:
     from machine import WDT
-    wdt = WDT(timeout=30000)
+    wdt = WDT(30000)  # timeout en ms (argumento posicional, no con nombre)
 except:
     wdt = None
 
