@@ -1,4 +1,9 @@
-# wifi.py - WiFi connection manager
+# wifi.py - WiFi connection manager (agnóstico de proyecto)
+# Monitorea y reconecta automáticamente si se pierde la señal
+
+_wlan = None
+_cfg = None
+_wdt_callback = None
 
 def log(msg):
     print(f"[wifi] {msg}")
@@ -9,14 +14,26 @@ def log(msg):
     except:
         pass
 
+def _get_wlan():
+    """Obtiene o crea la instancia WLAN (singleton)"""
+    global _wlan
+    if _wlan is None:
+        import network
+        _wlan = network.WLAN(network.STA_IF)
+        _wlan.active(True)
+    return _wlan
+
 def connect_wifi(cfg, wdt_callback=None):
-    """Conecta WiFi en loop hasta éxito"""
+    """Conecta WiFi en loop hasta éxito (agnóstico de proyecto)"""
+    global _cfg, _wdt_callback
+    _cfg = cfg
+    _wdt_callback = wdt_callback
+    
     import network
     import time
     
     log("=== Iniciando conexión WiFi ===")
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
+    wlan = _get_wlan()
 
     if wlan.isconnected():
         ifconfig = wlan.ifconfig()
@@ -148,4 +165,66 @@ def connect_wifi(cfg, wdt_callback=None):
             except:
                 pass
         time.sleep(5)
+
+def monitor_wifi(check_interval=30):
+    """
+    Monitorea la conexión WiFi y reconecta automáticamente si se pierde.
+    Esta función corre en loop infinito (no retorna).
+    
+    Args:
+        check_interval: Intervalo en segundos entre verificaciones (default: 30s)
+    """
+    import time
+    import network
+    
+    log("=== Iniciando monitoreo WiFi ===")
+    log(f"Verificando conexión cada {check_interval} segundos")
+    
+    wlan = _get_wlan()
+    last_ip = None
+    disconnected_count = 0
+    
+    while True:
+        try:
+            if _wdt_callback:
+                try:
+                    _wdt_callback()
+                except:
+                    pass
+            
+            if wlan.isconnected():
+                ifconfig = wlan.ifconfig()
+                current_ip = ifconfig[0]
+                
+                if current_ip and current_ip != '0.0.0.0':
+                    if last_ip != current_ip:
+                        log(f"✓ WiFi conectado: {current_ip}")
+                        last_ip = current_ip
+                    disconnected_count = 0
+                else:
+                    disconnected_count += 1
+                    if disconnected_count >= 3:
+                        log("⚠ IP inválida detectada, reconectando...")
+                        wlan.disconnect()
+                        time.sleep(2)
+                        if _cfg:
+                            connect_wifi(_cfg, _wdt_callback)
+            else:
+                disconnected_count += 1
+                if disconnected_count == 1:
+                    log("⚠ WiFi desconectado, iniciando reconexión...")
+                elif disconnected_count % 5 == 0:
+                    log(f"⚠ WiFi aún desconectado ({disconnected_count} checks), reconectando...")
+                
+                if disconnected_count >= 2:
+                    wlan.disconnect()
+                    time.sleep(2)
+                    if _cfg:
+                        connect_wifi(_cfg, _wdt_callback)
+            
+            time.sleep(check_interval)
+            
+        except Exception as e:
+            log(f"⚠ Error en monitoreo WiFi: {e}")
+            time.sleep(check_interval)
 

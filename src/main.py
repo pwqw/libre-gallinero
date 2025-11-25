@@ -89,11 +89,26 @@ def main():
     gc.collect()
     log(f"Memoria libre después de cargar config: {gc.mem_free()} bytes")
 
-    # Conectar WiFi
-    log("Iniciando conexión WiFi (reintentos infinitos)...")
+    # Conectar WiFi (conecta inicialmente, luego monitorea en background)
+    log("Iniciando conexión WiFi...")
     feed_wdt()  # Alimentar WDT antes de operación larga
     import wifi
-    wifi.connect_wifi(cfg, wdt_callback=feed_wdt)  # Pasar callback para alimentar WDT
+    wifi.connect_wifi(cfg, wdt_callback=feed_wdt)  # Conexión inicial
+    
+    # Iniciar monitoreo WiFi en background (reconexión automática)
+    # Esto corre en un loop infinito, pero no bloquea el resto del código
+    # porque los proyectos (gallinero/heladera) se cargan después
+    log("Iniciando monitoreo WiFi (reconexión automática)...")
+    try:
+        import _thread
+        _thread.start_new_thread(wifi.monitor_wifi, (30,))  # Verificar cada 30s
+        log("✅ Monitoreo WiFi iniciado en background")
+    except:
+        # Si _thread no está disponible, monitorear en el thread principal
+        # (esto bloqueará, pero es mejor que nada)
+        log("⚠ _thread no disponible, monitoreo en thread principal")
+        # No llamamos monitor_wifi aquí porque bloquearía
+        # En su lugar, el proyecto puede llamarlo si lo necesita
 
     # Sincronizar NTP
     feed_wdt()  # Alimentar WDT antes de operación de red
