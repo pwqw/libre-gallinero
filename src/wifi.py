@@ -11,10 +11,15 @@ def log(msg):
     except:
         pass
 
-def connect_wifi(cfg):
+def connect_wifi(cfg, wdt_callback=None):
     """
     Conecta WiFi en loop hasta que tenga éxito.
     Intenta conectarse indefinidamente hasta lograr conexión.
+    
+    Args:
+        cfg: Configuración con credenciales WiFi
+        wdt_callback: Función opcional para alimentar el watchdog timer
+                     durante operaciones largas
     """
     import network
     import time
@@ -55,6 +60,13 @@ def connect_wifi(cfg):
         attempt += 1
         log("")
         log(f"--- Intento de conexión #{attempt} ---")
+        
+        # Alimentar WDT al inicio de cada intento
+        if wdt_callback:
+            try:
+                wdt_callback()
+            except:
+                pass
         
         if not hidden:
             if attempt == 1 or attempt % 5 == 0:
@@ -104,6 +116,14 @@ def connect_wifi(cfg):
         while not wlan.isconnected() and timeout < timeout_seconds:
             time.sleep(1)
             timeout += 1
+            
+            # Alimentar WDT cada 5 segundos durante la espera
+            if wdt_callback and timeout % 5 == 0:
+                try:
+                    wdt_callback()
+                except:
+                    pass
+            
             status = wlan.status()
             status_names = {
                 1000: 'STAT_IDLE',
@@ -134,6 +154,18 @@ def connect_wifi(cfg):
             log(f"  DNS: {dns}")
             log(f"  WebREPL: ws://{ip}:8266")
             log(f"  Intentos necesarios: {attempt}")
+            
+            # Iniciar WebREPL ahora que tenemos IP de WiFi
+            # WebREPL se inicia aquí (no en boot.py) para asegurar que escuche en la IP correcta
+            log("Iniciando WebREPL en la nueva IP de WiFi...")
+            try:
+                import webrepl
+                webrepl.start()
+                log("✅ WebREPL iniciado - disponible en ws://{}:8266".format(ip))
+            except Exception as e:
+                log("⚠ No se pudo iniciar WebREPL: {}".format(e))
+                log("El sistema funcionará pero WebREPL no estará disponible")
+            
             log("=== Conexión WiFi exitosa ===")
             return True
 
@@ -155,5 +187,11 @@ def connect_wifi(cfg):
         elif status == 200:
             log("⚠ Fallo de conexión - verifica que la red esté disponible")
         log("Reintentando en 5 segundos...")
+        # Alimentar WDT antes de esperar
+        if wdt_callback:
+            try:
+                wdt_callback()
+            except:
+                pass
         time.sleep(5)
 

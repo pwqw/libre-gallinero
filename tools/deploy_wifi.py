@@ -28,13 +28,15 @@ sys.path.insert(0, str(script_dir))
 from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
 
 
-def get_files_to_upload(project_dir):
+def get_files_to_upload(project_dir, project_name=None):
     """
     Obtiene lista de archivos a subir desde src/.
     Incluye todos los .py y templates si existen.
+    También incluye archivos del proyecto especificado (gallinero, heladera, etc.)
     
     Args:
         project_dir: Directorio raíz del proyecto
+        project_name: Nombre del proyecto a incluir (gallinero, heladera, etc.)
     
     Returns:
         list: Lista de tuplas (local_path, remote_name)
@@ -53,6 +55,25 @@ def get_files_to_upload(project_dir):
                 print(f"   Omitiendo {filename} del deploy")
                 continue
             files.append((str(local_path), filename))
+    
+    # Incluir archivos del proyecto especificado
+    if project_name:
+        project_dir_path = src_dir / project_name
+        if project_dir_path.exists() and project_dir_path.is_dir():
+            print(f"{BLUE}📦 Incluyendo archivos del proyecto: {project_name}{NC}")
+            for py_file in project_dir_path.glob('*.py'):
+                if py_file.name == '__init__.py':
+                    # __init__.py va en el directorio del proyecto
+                    remote_name = f"{project_name}/__init__.py"
+                else:
+                    remote_name = f"{project_name}/{py_file.name}"
+                
+                is_valid, file_size, error_msg = validate_file_size(py_file)
+                if not is_valid:
+                    print(f"{RED}⚠️  {py_file.name}: {error_msg}{NC}")
+                    continue
+                files.append((str(py_file), remote_name))
+                print(f"   ✓ {remote_name}")
     
     # Templates si existen
     templates_dir = src_dir / 'templates'
@@ -88,6 +109,32 @@ def verify_deploy(client):
 def main():
     print(f"{BLUE}🐔 Libre-Gallinero WebREPL Deploy{NC}\n")
     
+    # Detectar proyecto y IP desde argumentos
+    project_name = None
+    ip_arg = None
+    
+    if len(sys.argv) > 1:
+        # El primer argumento puede ser IP o proyecto
+        arg1 = sys.argv[1]
+        # Si parece una IP (contiene puntos y números)
+        if '.' in arg1 and any(c.isdigit() for c in arg1):
+            ip_arg = arg1
+            if len(sys.argv) > 2:
+                project_name = sys.argv[2]
+        else:
+            # Es un nombre de proyecto
+            project_name = arg1
+            if len(sys.argv) > 2:
+                # El segundo argumento puede ser IP
+                arg2 = sys.argv[2]
+                if '.' in arg2 and any(c.isdigit() for c in arg2):
+                    ip_arg = arg2
+    
+    if project_name:
+        print(f"{BLUE}📦 Proyecto especificado: {project_name}{NC}\n")
+    if ip_arg:
+        print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
+    
     # Detectar directorio del proyecto
     script_dir = Path(__file__).parent.absolute()
     project_dir = script_dir.parent
@@ -107,16 +154,21 @@ def main():
         except:
             pass
     
-    # Conectar a WebREPL (con autodiscovery si no hay IP configurada)
-    client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=True)
+    # Conectar a WebREPL (usar IP si se proporcionó, sino autodiscovery)
+    auto_discover = not bool(ip_arg)
+    client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
+    
+    # Si se proporcionó IP, usarla directamente
+    if ip_arg:
+        client.ip = ip_arg
     
     if not client.connect():
         sys.exit(1)
     
     print(f"\n📤 Iniciando upload de archivos...\n")
     
-    # Obtener archivos a subir
-    files_to_upload = get_files_to_upload(project_dir)
+    # Obtener archivos a subir (incluyendo proyecto si se especificó)
+    files_to_upload = get_files_to_upload(project_dir, project_name=project_name)
     
     if not files_to_upload:
         print(f"{RED}❌ No se encontraron archivos para subir en src/{NC}")

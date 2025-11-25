@@ -1,5 +1,6 @@
 # main.py - Main orchestrator (minimal)
 # Imports and calls other modules only when needed
+# Este archivo se ejecuta automáticamente después de boot.py
 
 def log(msg):
     """Escribe al serial de forma consistente"""
@@ -11,8 +12,30 @@ def log(msg):
     except:
         pass
 
+# Watchdog Timer global (inicializado en main())
+_wdt = None
+
+def feed_wdt():
+    """Alimenta el watchdog timer para evitar reinicios"""
+    global _wdt
+    if _wdt:
+        try:
+            _wdt.feed()
+        except:
+            pass
+
 def main():
-    """Función principal - Se ejecuta automáticamente desde boot.py"""
+    """Función principal - Se ejecuta automáticamente cuando MicroPython carga main.py"""
+    global _wdt
+    
+    # Inicializar WDT si está disponible (heredado de boot.py o nuevo)
+    try:
+        from machine import WDT
+        # Extender timeout a 60 segundos para operaciones de WiFi/NTP
+        _wdt = WDT(timeout=60000)  # 60 segundos
+        log("✅ Watchdog Timer activado (60s timeout)")
+    except Exception as e:
+        log(f"⚠ WDT no disponible: {e}")
     try:
         import gc
         gc.collect()
@@ -68,14 +91,17 @@ def main():
 
     # Conectar WiFi
     log("Iniciando conexión WiFi (reintentos infinitos)...")
+    feed_wdt()  # Alimentar WDT antes de operación larga
     import wifi
-    wifi.connect_wifi(cfg)
+    wifi.connect_wifi(cfg, wdt_callback=feed_wdt)  # Pasar callback para alimentar WDT
 
     # Sincronizar NTP
+    feed_wdt()  # Alimentar WDT antes de operación de red
     import ntp
     ntp_synced = ntp.sync_ntp()
     if not ntp_synced:
         log("⚠ Sin NTP, reloj puede estar desincronizado")
+    feed_wdt()  # Alimentar WDT después de NTP
     gc.collect()
     log(f"Memoria libre después de WiFi/NTP: {gc.mem_free()} bytes")
 
@@ -84,11 +110,30 @@ def main():
     log("=" * 50)
     log("Iniciando carga de proyecto (opcional)")
     log("=" * 50)
+    feed_wdt()  # Alimentar WDT antes de cargar proyecto
     try:
         import project_loader
         project_loader.load_project(project, cfg)
         log("✅ Proyecto cargado exitosamente")
+        feed_wdt()  # Alimentar WDT después de cargar proyecto
     except Exception as e:
         log(f"⚠ No se pudo cargar el proyecto: {e}")
         log("Sistema funcionando en modo básico (WiFi + WebREPL disponible)")
         log("Puedes cargar el proyecto más tarde vía WebREPL o deploy")
+        feed_wdt()  # Alimentar WDT incluso si falla
+    
+    log("✅ main.py completado - Sistema operativo")
+    feed_wdt()  # Alimentar WDT final
+
+# Ejecutar main() automáticamente cuando MicroPython carga este archivo
+# Esto es lo que MicroPython hace después de ejecutar boot.py
+if __name__ == '__main__' or True:  # Siempre ejecutar en MicroPython
+    try:
+        main()
+    except KeyboardInterrupt:
+        log("⚠ Interrupción por teclado")
+    except Exception as e:
+        log(f"❌ Error fatal en main(): {e}")
+        import sys
+        sys.print_exception(e)
+        log("⚠ Sistema en modo seguro - WebREPL disponible para diagnóstico")
