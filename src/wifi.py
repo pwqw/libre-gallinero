@@ -85,24 +85,12 @@ def connect_wifi(cfg):
         
         log(f"Intentando conectar a {repr(ssid)}...")
         try:
+            # Para redes ocultas en MicroPython ESP8266, simplemente usamos connect(ssid, pw)
+            # No se necesita especificar bssid, el sistema maneja redes ocultas automáticamente
             if hidden:
-                log("Usando método de conexión para red oculta...")
-                wlan.connect(ssid, pw, bssid=-1)
-                log("Comando de conexión enviado (red oculta, bssid=-1)")
-            else:
-                wlan.connect(ssid, pw)
-                log("Comando de conexión enviado")
-        except TypeError as e:
-            log(f"TypeError en connect: {e}")
-            log("Intentando conexión sin bssid...")
-            try:
-                wlan.connect(ssid, pw)
-                log("Comando de conexión enviado (fallback sin bssid)")
-            except Exception as e2:
-                log(f"✗ Error en fallback: {e2}")
-                log("Reintentando en 5 segundos...")
-                time.sleep(5)
-                continue
+                log("Conectando a red oculta (sin escaneo previo)...")
+            wlan.connect(ssid, pw)
+            log("Comando de conexión enviado")
         except Exception as e:
             log(f"✗ Error al conectar: {e}")
             log(f"Tipo de error: {type(e).__name__}")
