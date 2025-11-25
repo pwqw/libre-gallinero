@@ -11,6 +11,7 @@ import time
 import socket
 import ipaddress
 import threading
+import logging
 from pathlib import Path
 
 # Colores ANSI
@@ -19,6 +20,13 @@ GREEN = '\033[0;32m'
 YELLOW = '\033[1;33m'
 BLUE = '\033[0;34m'
 NC = '\033[0m'
+
+# Configuración de logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Límite de tamaño de archivo (ESP8266 tiene memoria limitada)
+MAX_FILE_SIZE = 100 * 1024  # 100KB
 
 
 def load_config(project_dir=None):
@@ -350,19 +358,22 @@ class WebREPLClient:
                 print("   1. ESP8266 está encendido")
                 print("   2. ESP8266 está conectado a WiFi")
                 print("   3. WebREPL está activo (import webrepl; webrepl.start())")
+            logger.error(f"No se pudo conectar a {url}: ConnectionRefusedError")
             return False
         except Exception as e:
             if self.verbose:
                 print(f"{RED}❌ Error de conexión: {e}{NC}")
+            logger.error(f"Error de conexión a {url}: {e}", exc_info=True)
             return False
     
-    def send_file(self, local_path, remote_name):
+    def send_file(self, local_path, remote_name, max_size=None):
         """
         Sube un archivo al ESP8266 usando WebREPL.
         
         Args:
             local_path: Ruta local del archivo
             remote_name: Nombre del archivo en el ESP8266
+            max_size: Tamaño máximo permitido en bytes (default: MAX_FILE_SIZE)
         
         Returns:
             bool: True si el upload fue exitoso, False en caso contrario
@@ -370,20 +381,37 @@ class WebREPLClient:
         if not self.ws:
             if self.verbose:
                 print(f"{RED}❌ No hay conexión WebREPL activa{NC}")
+            logger.error("No hay conexión WebREPL activa")
             return False
         
         local_path = Path(local_path)
         if not local_path.exists():
             if self.verbose:
                 print(f"{RED}❌ Archivo no encontrado: {local_path}{NC}")
+            logger.error(f"Archivo no encontrado: {local_path}")
             return False
         
+        # Validar tamaño de archivo
+        file_size = local_path.stat().st_size
+        max_allowed = max_size or MAX_FILE_SIZE
+        
+        if file_size > max_allowed:
+            error_msg = f"Archivo muy grande: {file_size} bytes (máximo: {max_allowed} bytes)"
+            if self.verbose:
+                print(f"{RED}❌ {error_msg}{NC}")
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        logger.info(f"Subiendo archivo: {local_path} ({file_size} bytes) → {remote_name}")
+        
         if self.verbose:
-            print(f"{BLUE}📄 {local_path} → {remote_name}{NC}")
+            print(f"{BLUE}📄 {local_path} → {remote_name} ({file_size} bytes){NC}")
         
         try:
             with open(local_path, 'r', encoding='utf-8') as f:
                 content = f.read()
+            
+            logger.debug(f"Contenido leído: {len(content)} caracteres")
             
             content_escaped = content.replace('\\', '\\\\').replace("'", "\\'")
             
@@ -415,15 +443,21 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
             if "Uploaded" in response or remote_name in response:
                 if self.verbose:
                     print(f"{GREEN}   ✅ OK{NC}")
+                logger.info(f"Archivo subido exitosamente: {remote_name}")
                 return True
             else:
                 if self.verbose:
                     print(f"{YELLOW}   ⚠️  Completado (sin confirmación clara){NC}")
+                logger.warning(f"Upload completado sin confirmación clara: {remote_name}")
                 return True
         
+        except ValueError:
+            # Re-lanzar ValueError (tamaño de archivo)
+            raise
         except Exception as e:
             if self.verbose:
                 print(f"{RED}   ❌ Error: {e}{NC}")
+            logger.error(f"Error subiendo archivo {local_path}: {e}", exc_info=True)
             return False
     
     def execute(self, command, timeout=2):
@@ -438,7 +472,10 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
             str: Respuesta del comando, o "" si hay error
         """
         if not self.ws:
+            logger.warning("Intento de ejecutar comando sin conexión WebREPL")
             return ""
+        
+        logger.debug(f"Ejecutando comando: {command[:50]}...")
         
         try:
             self.ws.send(command + '\r\n')
@@ -462,11 +499,110 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                 except:
                     break
             
+            logger.debug(f"Respuesta recibida: {response[:100]}...")
             return response
         except Exception as e:
             if self.verbose:
                 print(f"{YELLOW}⚠️  Error ejecutando comando: {e}{NC}")
+            logger.error(f"Error ejecutando comando: {e}", exc_info=True)
             return ""
+    
+    def download_file(self, remote_name, local_path):
+        """
+        Descarga un archivo del ESP8266 usando WebREPL.
+        
+        Args:
+            remote_name: Nombre del archivo en el ESP8266
+            local_path: Ruta local donde guardar el archivo
+        
+        Returns:
+            bool: True si el download fue exitoso, False en caso contrario
+        """
+        if not self.ws:
+            if self.verbose:
+                print(f"{RED}❌ No hay conexión WebREPL activa{NC}")
+            logger.error("No hay conexión WebREPL activa")
+            return False
+        
+        logger.info(f"Descargando archivo: {remote_name} → {local_path}")
+        
+        if self.verbose:
+            print(f"{BLUE}📥 {remote_name} → {local_path}{NC}")
+        
+        try:
+            # Comando para leer archivo completo
+            read_code = f"""
+try:
+    with open('{remote_name}', 'r') as f:
+        content = f.read()
+    print('FILE_CONTENT_START')
+    print(content, end='')
+    print('FILE_CONTENT_END')
+except Exception as e:
+    print(f'ERROR: {{e}}')
+"""
+            
+            self.ws.send(read_code + '\r\n')
+            time.sleep(0.5)
+            
+            response = ""
+            start_time = time.time()
+            timeout = 5  # Timeout para descarga
+            
+            while time.time() - start_time < timeout:
+                try:
+                    self.ws.settimeout(1)
+                    data = self.ws.recv()
+                    if isinstance(data, bytes):
+                        response += data.decode('utf-8', errors='ignore')
+                    else:
+                        response += data
+                    
+                    # Buscar marcadores de inicio y fin
+                    if 'FILE_CONTENT_START' in response and 'FILE_CONTENT_END' in response:
+                        break
+                    
+                    if 'ERROR:' in response:
+                        error_msg = response.split('ERROR:')[1].split('\n')[0].strip()
+                        if self.verbose:
+                            print(f"{RED}   ❌ Error: {error_msg}{NC}")
+                        logger.error(f"Error descargando archivo: {error_msg}")
+                        return False
+                    
+                except websocket.WebSocketTimeoutException:
+                    continue
+                except Exception as e:
+                    logger.warning(f"Excepción durante descarga: {e}")
+                    break
+            
+            # Extraer contenido del archivo
+            if 'FILE_CONTENT_START' in response and 'FILE_CONTENT_END' in response:
+                start_idx = response.find('FILE_CONTENT_START') + len('FILE_CONTENT_START')
+                end_idx = response.find('FILE_CONTENT_END')
+                content = response[start_idx:end_idx].strip()
+                
+                # Guardar archivo local
+                local_path_obj = Path(local_path)
+                local_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(local_path_obj, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                
+                if self.verbose:
+                    print(f"{GREEN}   ✅ OK ({len(content)} bytes){NC}")
+                logger.info(f"Archivo descargado exitosamente: {local_path} ({len(content)} bytes)")
+                return True
+            else:
+                if self.verbose:
+                    print(f"{YELLOW}   ⚠️  No se pudo extraer contenido del archivo{NC}")
+                logger.warning(f"No se pudo extraer contenido del archivo: {remote_name}")
+                return False
+        
+        except Exception as e:
+            if self.verbose:
+                print(f"{RED}   ❌ Error: {e}{NC}")
+            logger.error(f"Error descargando archivo {remote_name}: {e}", exc_info=True)
+            return False
     
     def close(self):
         """Cierra la conexión WebREPL"""
