@@ -192,6 +192,8 @@ class SerialMonitor:
             last_data_time = time.time()
             warning_shown = False
             initial_wait = True
+            last_warning_time = 0
+            warning_interval = 10  # Mostrar advertencia cada 10 segundos
 
             while self.is_running:
                 try:
@@ -200,6 +202,7 @@ class SerialMonitor:
                         last_data_time = time.time()
                         warning_shown = False
                         initial_wait = False
+                        last_warning_time = 0  # Reset tiempo de última advertencia
                         self.reconnect_count = 0  # Reset contador de reconexión
 
                         # Decodificar e imprimir
@@ -215,6 +218,7 @@ class SerialMonitor:
                             continue
 
                         elapsed = time.time() - last_data_time
+                        current_time = time.time()
 
                         # Advertencia inicial
                         if initial_wait and elapsed > initial_wait_time:
@@ -223,17 +227,21 @@ class SerialMonitor:
                             print(f"{YELLOW}   Intenta reiniciar el dispositivo (desconecta y reconecta USB).{NC}\n")
                             initial_wait = False
                             warning_shown = True
+                            last_warning_time = current_time
 
-                        # Advertencia periódica
-                        elif not warning_shown and elapsed > no_data_warning_time:
-                            print(f"\n{YELLOW}⚠️  Sin datos desde hace {int(elapsed)}s{NC}")
-                            print(f"{YELLOW}   Posibles causas:{NC}")
-                            print(f"   - boot.py agotó memoria y no puede imprimir")
-                            print(f"   - ESP8266 necesita reinicio (desconecta/reconecta USB)")
-                            print(f"   - boot.py tiene errores")
-                            print(f"\n{YELLOW}   Si el dispositivo funciona pero no imprime,")
-                            print(f"   prueba conectar vía WebREPL en lugar del serial.{NC}\n")
-                            warning_shown = True
+                        # Advertencia periódica (cada warning_interval segundos)
+                        elif elapsed > no_data_warning_time:
+                            # Solo mostrar si ha pasado suficiente tiempo desde la última advertencia
+                            if current_time - last_warning_time >= warning_interval:
+                                print(f"\n{YELLOW}⚠️  Sin datos desde hace {int(elapsed)}s{NC}")
+                                print(f"{YELLOW}   Posibles causas:{NC}")
+                                print(f"   - boot.py agotó memoria y no puede imprimir")
+                                print(f"   - ESP8266 necesita reinicio (desconecta/reconecta USB)")
+                                print(f"   - boot.py tiene errores")
+                                print(f"\n{YELLOW}   Si el dispositivo funciona pero no imprime,")
+                                print(f"   prueba conectar vía WebREPL en lugar del serial.{NC}\n")
+                                last_warning_time = current_time
+                                warning_shown = True
 
                 except OSError as e:
                     # Error de I/O - probablemente el ESP8266 se reinició
@@ -243,6 +251,7 @@ class SerialMonitor:
                     # Reset timers después de reconexión exitosa
                     last_data_time = time.time()
                     warning_shown = False
+                    last_warning_time = 0
 
         except self.serial.SerialException as e:
             if self.verbose:
