@@ -443,8 +443,27 @@ class WebREPLClient:
             
             content_escaped = content.replace('\\', '\\\\').replace("'", "\\'")
             
-            upload_code = f"""
-with open('{remote_name}', 'w') as f:
+            # Crear directorios necesarios si el archivo está en una subcarpeta
+            remote_path = Path(remote_name)
+            dir_creation = ""
+            if len(remote_path.parts) > 1:
+                # Hay subdirectorios, crear la estructura
+                dirs_to_create = []
+                current_path = ""
+                for part in remote_path.parts[:-1]:  # Todos excepto el nombre del archivo
+                    current_path = f"{current_path}/{part}" if current_path else part
+                    dirs_to_create.append(current_path)
+                
+                # Crear código para crear directorios (compatible con MicroPython)
+                dir_lines = ["import os"]
+                for dir_path in dirs_to_create:
+                    dir_lines.append(f"try:")
+                    dir_lines.append(f"    os.mkdir('{dir_path}')")
+                    dir_lines.append(f"except:")
+                    dir_lines.append(f"    pass")
+                dir_creation = "\n".join(dir_lines) + "\n"
+            
+            upload_code = f"""{dir_creation}with open('{remote_name}', 'w') as f:
     f.write('''{content_escaped}''')
 print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
 """
