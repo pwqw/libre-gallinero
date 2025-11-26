@@ -34,9 +34,27 @@ def load_app(app_name, cfg):
             log(f"⚠ App desconocida: {app_name}")
     except ImportError as e:
         log(f"⚠ Módulo no encontrado: {e}")
-        log("Normal en setup inicial - deploy por WiFi")
+
+        # Provide helpful diagnostic information
+        try:
+            import os
+            root_files = os.listdir('/')
+
+            # Check what's actually present
+            has_app_dir = app_name in root_files
+
+            if not has_app_dir:
+                log(f"⚠ Directorio '{app_name}/' no existe en el ESP8266")
+                log("💡 Solución: python3 tools/deploy_wifi.py " + app_name)
+            else:
+                log(f"⚠ Directorio existe pero import falló")
+                log(f"💡 Prueba: python3 tools/deploy_wifi.py {app_name}")
+
+        except Exception:
+            pass  # Can't diagnose, continue anyway
+
     except Exception as e:
-        log(f"✗ Error: {e}")
+        log(f"✗ Error al cargar app: {e}")
         import sys
         sys.print_exception(e)
 

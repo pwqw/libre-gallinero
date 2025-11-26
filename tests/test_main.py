@@ -113,7 +113,7 @@ class TestLog:
              patch.object(gc, 'mem_free', return_value=50000, create=True), \
              patch.object(sys, 'print_exception', create=True), \
              patch.dict('sys.modules', {'machine': MagicMock(), '_thread': MagicMock()}), \
-             patch('src.config.load_config', return_value={'APP': 'heladera'}), \
+             patch('src.config.load_config', return_value={'APP': 'blink'}), \
              patch('src.wifi.connect_wifi'), \
              patch('src.wifi.monitor_wifi'), \
              patch('_thread.start_new_thread'), \
@@ -134,7 +134,7 @@ class TestLog:
              patch.object(gc, 'mem_free', return_value=50000, create=True), \
              patch.object(sys, 'print_exception', create=True), \
              patch.dict('sys.modules', {'machine': MagicMock(), '_thread': MagicMock()}), \
-             patch('src.config.load_config', return_value={'APP': 'heladera'}), \
+             patch('src.config.load_config', return_value={'APP': 'blink'}), \
              patch('src.wifi.connect_wifi'), \
              patch('src.wifi.monitor_wifi'), \
              patch('_thread.start_new_thread'), \

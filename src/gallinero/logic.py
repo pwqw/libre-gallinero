@@ -28,3 +28,4 @@ def relay_pollitos_state(temp, umbral=28):
     """
     return 1 if temp > umbral else 0
 
+

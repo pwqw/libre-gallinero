@@ -27,18 +27,20 @@ pytest tests/ -v
 ### Deployment
 
 ```bash
-# Initial setup (USB only, first time)
+# Initial setup (USB only, first time) - DEPLOYS COMPLETE SYSTEM
 python3 tools/setup_initial.py
+# After this, ESP8266 is fully functional with blink app
+# LED will start blinking after reboot
 
-# Deploy via WiFi (preferred for development)
-python3 tools/deploy_wifi.py                 # Base + blink app (default)
-python3 tools/deploy_wifi.py gallinero       # Base + gallinero app
-python3 tools/deploy_wifi.py heladera        # Base + heladera app
+# Change app via WiFi (preferred for development)
+python3 tools/deploy_wifi.py gallinero       # Deploy gallinero app
+python3 tools/deploy_wifi.py heladera        # Deploy heladera app
+python3 tools/deploy_wifi.py blink           # Re-deploy blink
 python3 tools/deploy_wifi.py heladera 192.168.1.100  # Specify IP
 
-# Deploy via USB (faster for local development)
-python3 tools/deploy_usb.py                  # Base + blink app (default)
-python3 tools/deploy_usb.py gallinero        # Base + gallinero app
+# Change app via USB (faster for local development)
+python3 tools/deploy_usb.py gallinero        # Deploy via USB
+python3 tools/deploy_usb.py blink            # Deploy via USB
 ```
 
 ### Configuration
@@ -147,20 +149,34 @@ MicroPython has WebREPL file transfer limits:
 
 ## Deployment System
 
-The deployment system supports two modes:
+The deployment system supports three modes:
 
-**USB Mode** (`deploy_usb.py`):
-- Uses ampy for file transfer
-- Auto-detects serial ports (cross-platform)
-- Faster for local development
-- Requires physical connection
+**Initial Setup** (`setup_initial.py` - USB, first time only):
+- Configures WebREPL password
+- Deploys complete working system (~20 files):
+  - Bootstrap: boot.py, webrepl_cfg.py, .env
+  - Base modules: main.py, config.py, wifi.py, ntp.py, app_loader.py
+  - Default app: blink/ (minimal LED test)
+- System is fully functional after this single command
+- Takes ~30-60 seconds (one time only)
+- LED starts blinking automatically after reboot
+- Requires physical USB connection
 
 **WiFi Mode** (`deploy_wifi.py`):
 - Uses WebREPL protocol
 - Auto-discovers ESP8266 IP or accepts explicit IP
-- Deploys base modules + specific app (defaults to blink if no app specified)
+- Deploys base modules + specified app
+- Defaults to blink if no app specified
 - Verifies deployment by importing main.py
 - Optional post-deploy reboot
+- Use to change apps after initial setup
+
+**USB Mode** (`deploy_usb.py`):
+- Uses ampy for file transfer
+- Auto-detects serial ports (cross-platform)
+- Faster than WiFi for local development
+- Requires physical USB connection
+- Use to change apps or update code
 
 ## Project-Specific Conventions
 
@@ -208,6 +224,7 @@ Deploy with: `python3 tools/deploy_wifi.py <app_name>`
 
 ## Common Gotchas
 
+- **First setup takes 30-60 seconds:** setup_initial.py deploys complete system (~20 files). This is normal and only happens once. LED should blink automatically when finished.
 - WDT timeout during WiFi connection on slow/hidden networks → Use wdt_callback parameter
 - WebREPL not starting → Check IP address is valid and WiFi connected
 - Import errors after deploy → Ensure __init__.py files are uploaded first

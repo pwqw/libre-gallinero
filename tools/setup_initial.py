@@ -76,6 +76,47 @@ def run_ampy(cmd):
     return True
 
 
+def get_base_files_to_upload(project_dir):
+    """
+    Get list of base system files + blink app for initial setup.
+    This ensures the ESP8266 works immediately after setup.
+
+    Returns:
+        list: List of tuples (local_path, remote_name) or (None, "mkdir:dirname")
+    """
+    src_dir = Path(project_dir) / 'src'
+    files = []
+
+    # Base modules (required for boot sequence)
+    base_modules = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
+    for filename in base_modules:
+        local_path = src_dir / filename
+        if local_path.exists():
+            files.append((str(local_path), filename))
+        else:
+            print(f"{RED}⚠️  {filename} no encontrado en src/{NC}")
+
+    # Blink app (minimal default app for testing)
+    blink_dir = src_dir / 'blink'
+    if blink_dir.exists():
+        # Create blink directory on ESP8266
+        files.append((None, 'mkdir:blink'))
+
+        # Upload __init__.py first (makes it a valid Python package)
+        init_file = blink_dir / '__init__.py'
+        if init_file.exists():
+            files.append((str(init_file), 'blink/__init__.py'))
+
+        # Upload other .py files in blink/
+        for py_file in blink_dir.glob('*.py'):
+            if py_file.name != '__init__.py':
+                files.append((str(py_file), f'blink/{py_file.name}'))
+    else:
+        print(f"{YELLOW}⚠️  blink/ no encontrado - sistema puede no funcionar{NC}")
+
+    return files
+
+
 def verify_webrepl_config(port, password):
     """Verifica que webrepl_cfg.py se copió correctamente"""
     print(f"\n{BLUE}🔍 Verificando configuración...{NC}")
@@ -122,7 +163,7 @@ def main():
         print(f"{RED}❌ Puerto requerido{NC}")
         sys.exit(1)
     
-    print(f"{BLUE}[1/4] Puerto: {port}{NC}")
+    print(f"{BLUE}[1/5] Puerto: {port}{NC}")
     
     # Obtener password WebREPL
     webrepl_pass = env.get('WEBREPL_PASSWORD') or input(f"{YELLOW}Password WebREPL (default: admin): {NC}").strip() or "admin"
@@ -156,7 +197,7 @@ def main():
         print(f"{GREEN}✅ .env actualizado con WEBREPL_PASSWORD{NC}")
     
     # 1. Configurar webrepl_cfg.py
-    print(f"\n{BLUE}[2/4] Configurando WebREPL...{NC}")
+    print(f"\n{BLUE}[2/5] Configurando WebREPL...{NC}")
     print(f"   Password: {'*' * len(webrepl_pass)}")
     
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -172,7 +213,7 @@ def main():
     verify_webrepl_config(port, webrepl_pass)
     
     # 2. Copiar boot.py desde src/
-    print(f"\n{BLUE}[3/4] Copiando boot.py...{NC}")
+    print(f"\n{BLUE}[3/5] Copiando boot.py...{NC}")
     boot_path = project_dir / 'src' / 'boot.py'
     
     if not boot_path.exists():
@@ -184,7 +225,7 @@ def main():
     print(f"{GREEN}✅ boot.py instalado{NC}")
     
     # 3. Copiar .env
-    print(f"\n{BLUE}[4/4] Copiando .env al ESP8266...{NC}")
+    print(f"\n{BLUE}[4/5] Copiando .env al ESP8266...{NC}")
     if env_path.exists():
         if run_ampy(['--port', port, 'put', str(env_path), '.env']):
             print(f"{GREEN}✅ .env copiado{NC}")
@@ -194,29 +235,80 @@ def main():
     else:
         print(f"{YELLOW}⚠️  .env no encontrado{NC}")
         print(f"{YELLOW}   boot.py usará webrepl_cfg.py o valores por defecto{NC}")
-    
-    # Resumen
-    print(f"\n{GREEN}{'='*50}{NC}")
-    print(f"{GREEN}✅ Setup completado!{NC}")
-    print(f"{GREEN}{'='*50}{NC}\n")
-    
+
+    # 5. Deploy complete system (base + blink app)
+    print(f"\n{BLUE}[5/5] Desplegando sistema completo...{NC}")
+    print(f"   Módulos base + app blink (sistema mínimo funcional)")
+
+    base_files = get_base_files_to_upload(project_dir)
+
+    if not base_files:
+        print(f"{RED}❌ No se encontraron archivos del sistema{NC}")
+        sys.exit(1)
+
+    success_count = 0
+    error_count = 0
+
+    for item in base_files:
+        local_path, remote_name = item
+
+        # Handle directory creation
+        if local_path is None and remote_name.startswith('mkdir:'):
+            dir_name = remote_name.replace('mkdir:', '')
+            try:
+                subprocess.run(
+                    ['ampy', '--port', port, 'mkdir', dir_name],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                print(f"   📁 {dir_name}/")
+            except Exception:
+                pass  # Directory might already exist, that's OK
+            continue
+
+        # Upload file
+        if local_path and Path(local_path).exists():
+            display_name = Path(local_path).name
+            print(f"   📄 {remote_name}")
+
+            if run_ampy(['--port', port, 'put', local_path, remote_name]):
+                success_count += 1
+            else:
+                error_count += 1
+                print(f"{RED}   ⚠️  Error al subir {remote_name}{NC}")
+
+    print(f"\n{GREEN}✅ Sistema desplegado: {success_count} archivos{NC}")
+    if error_count > 0:
+        print(f"{YELLOW}⚠️  Advertencias: {error_count} archivos{NC}")
+
+    # Resumen final
+    print(f"\n{GREEN}{'='*60}{NC}")
+    print(f"{GREEN}✅ Setup completado - Sistema listo para usar!{NC}")
+    print(f"{GREEN}{'='*60}{NC}\n")
+
     print(f"{BLUE}📋 Resumen:{NC}")
-    print(f"   • webrepl_cfg.py: Password configurado")
-    print(f"   • boot.py: Instalado")
-    print(f"   • .env: {'Copiado' if env_path.exists() else 'No disponible'}")
-    print(f"   • Password WebREPL: {'*' * len(webrepl_pass)}")
+    print(f"   • WebREPL: Configurado (password: {'*' * len(webrepl_pass)})")
+    print(f"   • Archivos base: {success_count} módulos")
+    print(f"   • App instalada: blink (LED test)")
+    print(f"   • Config: .env {'copiado' if env_path.exists() else 'usando defaults'}")
+
+    print(f"\n{GREEN}✨ Tu ESP8266 está listo para funcionar!{NC}")
     print(f"\n{YELLOW}Próximos pasos:{NC}")
     print(f"  1. Reinicia el ESP8266 (desconecta y reconecta USB)")
-    print(f"  2. Observa el proceso de bootstrapping abajo")
-    print(f"  3. Si WiFi conecta → anota la IP (aparecerá en el monitor)")
-    print(f"  4. Si WiFi falla → conecta al hotspot 'libre gallinero'")
-    print(f"  5. WebREPL estará disponible en:")
-    print(f"     • WiFi OK: ws://<IP>:8266")
-    print(f"     • Hotspot: ws://192.168.4.1:8266")
-    print(f"  6. Presiona Ctrl+C para salir del monitor\n")
-    
-    print(f"{BLUE}💡 Tip: Después del reinicio, puedes usar:{NC}")
-    print(f"   python3 tools/deploy_wifi.py  # Deploy sin cables\n")
+    print(f"  2. 💡 El LED debe comenzar a parpadear automáticamente")
+    print(f"  3. Observa el proceso de boot abajo:")
+    print(f"     - [main] Iniciando")
+    print(f"     - [wifi] Conectando...")
+    print(f"     - [ntp] Sincronizando...")
+    print(f"     - [blink] Loop principal")
+    print(f"  4. Anota la IP que aparece en el monitor")
+    print(f"  5. WebREPL: ws://<IP>:8266")
+
+    print(f"\n{BLUE}💡 Para cambiar de app (después del primer boot):{NC}")
+    print(f"   python3 tools/deploy_wifi.py gallinero  # App gallinero")
+    print(f"   python3 tools/deploy_wifi.py heladera   # App heladera")
+    print(f"   python3 tools/deploy_wifi.py blink      # Volver a blink\n")
     
     try:
         input(f"{BLUE}Presiona Enter cuando hayas reiniciado el ESP8266...{NC}")
