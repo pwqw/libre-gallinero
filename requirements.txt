@@ -2,5 +2,6 @@ adafruit-ampy
 esptool
 python-dotenv
 pytest
+pytest-timeout
 pyserial
 websocket-client
