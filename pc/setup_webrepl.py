@@ -10,16 +10,24 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from serial_monitor import SerialMonitor, find_port, GREEN, YELLOW, BLUE, RED, NC
+
+# Ajustar path para imports locales
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+from serial_monitor import SerialMonitor, find_port
+from colors import GREEN, YELLOW, BLUE, RED, NC
+from validate_config import validate
 
 # Agregar tools/common al path para importar funciones comunes
-script_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(script_dir)
 tools_common_path = os.path.join(project_dir, 'tools', 'common')
 if tools_common_path not in sys.path:
     sys.path.insert(0, tools_common_path)
 
-from webrepl_client import MAX_FILE_SIZE, validate_file_size
+# Importar módulo común (path agregado dinámicamente arriba)
+from webrepl_client import MAX_FILE_SIZE, validate_file_size  # type: ignore
 
 def load_env():
     """Carga variables desde archivo .env del repositorio"""
@@ -88,6 +96,14 @@ def main():
     # Directorios del proyecto
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
+
+    # Validar configuración antes de continuar
+    print(f"{BLUE}Validando configuración...{NC}\n")
+    is_valid, errors = validate(verbose=True)
+    if not is_valid:
+        print(f"\n{RED}❌ Configuración inválida. Corrige los errores antes de continuar.{NC}")
+        sys.exit(1)
+    print()
 
     # Cargar configuración
     env = load_env()

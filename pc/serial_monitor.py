@@ -5,16 +5,18 @@ Proporciona funcionalidad de conexión, reconexión automática y monitoreo.
 """
 
 import sys
+import os
 import time
 import glob
 import subprocess
 
-# Colores ANSI
-GREEN = '\033[0;32m'
-YELLOW = '\033[1;33m'
-BLUE = '\033[0;34m'
-RED = '\033[0;31m'
-NC = '\033[0m'
+# Ajustar path para imports locales
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+# Importar colores centralizados
+from colors import GREEN, YELLOW, BLUE, RED, NC
 
 
 def find_port():

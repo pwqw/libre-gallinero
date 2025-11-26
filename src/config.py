@@ -1,5 +1,16 @@
 # config.py - Configuration loader
-# Minimal module for loading .env configuration
+# Centralized module for loading .env configuration
+
+# Constantes de configuración por defecto
+DEFAULT_CONFIG = {
+    'WIFI_SSID': 'libre gallinero',
+    'WIFI_PASSWORD': 'huevos1',
+    'WIFI_HIDDEN': 'false',
+    'WEBREPL_PASSWORD': 'admin',
+    'LATITUDE': '-31.4167',
+    'LONGITUDE': '-64.1833',
+    'APP': 'heladera'
+}
 
 def log(msg):
     """Escribe al serial de forma consistente"""
@@ -12,7 +23,15 @@ def log(msg):
         pass
 
 def parse_env(path):
-    """Lee .env"""
+    """
+    Lee archivo .env y retorna dict de configuración
+    
+    Args:
+        path: Ruta al archivo .env
+        
+    Returns:
+        dict: Configuración parseada (vacío si no se puede leer)
+    """
     cfg = {}
     try:
         with open(path, 'r') as f:
@@ -26,26 +45,63 @@ def parse_env(path):
     return cfg
 
 def load_config():
-    """Carga config desde .env con defaults"""
+    """
+    Carga configuración con cascada:
+    1. .env (si existe)
+    2. .env.example (si existe, copia a .env)
+    3. DEFAULT_CONFIG (hardcoded)
+    
+    Returns:
+        dict: Configuración cargada con valores por defecto si faltan
+    """
     log("Cargando configuración...")
+    cfg = {}
+    
+    # 1. Intentar cargar desde .env
     cfg = parse_env('.env')
     if cfg:
         log("Configuración cargada desde .env")
     else:
+        # 2. Intentar cargar desde .env.example
         cfg = parse_env('.env.example')
         if cfg:
             log("Configuración cargada desde .env.example")
         else:
+            # 3. Usar defaults
             log("Usando configuración por defecto")
-            cfg = {
-                'WIFI_SSID': 'libre gallinero',
-                'WIFI_PASSWORD': 'huevos1',
-                'WIFI_HIDDEN': 'false',
-                'LATITUDE': '-31.4167',
-                'LONGITUDE': '-64.1833',
-                'APP': 'heladera'
-            }
-    log(f"SSID configurado: {cfg.get('WIFI_SSID', 'N/A')}")
-    log(f"App: {cfg.get('APP', 'N/A')}")
-    return cfg
+            cfg = {}
+    
+    # Aplicar defaults para valores faltantes
+    final_cfg = DEFAULT_CONFIG.copy()
+    final_cfg.update(cfg)
+    
+    log(f"SSID configurado: {final_cfg.get('WIFI_SSID', 'N/A')}")
+    log(f"App: {final_cfg.get('APP', 'N/A')}")
+    return final_cfg
+
+def get_webrepl_password():
+    """
+    Obtiene password WebREPL con prioridad:
+    1. .env (WEBREPL_PASSWORD)
+    2. webrepl_cfg.py (PASS)
+    3. DEFAULT_CONFIG
+    
+    Returns:
+        str: Password WebREPL
+    """
+    # 1. Intentar desde .env
+    cfg = parse_env('.env')
+    if cfg and 'WEBREPL_PASSWORD' in cfg:
+        return cfg['WEBREPL_PASSWORD']
+    
+    # 2. Intentar desde webrepl_cfg.py
+    try:
+        import webrepl_cfg
+        if hasattr(webrepl_cfg, 'PASS'):
+            return webrepl_cfg.PASS
+    except:
+        pass
+    
+    # 3. Usar default
+    return DEFAULT_CONFIG.get('WEBREPL_PASSWORD', 'admin')
 

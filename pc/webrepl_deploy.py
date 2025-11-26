@@ -23,12 +23,14 @@ import socket
 import ipaddress
 import threading
 
-# Colores
-RED = '\033[0;31m'
-GREEN = '\033[0;32m'
-YELLOW = '\033[1;33m'
-BLUE = '\033[0;34m'
-NC = '\033[0m'
+# Ajustar path para imports locales
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+# Importar colores centralizados
+from colors import RED, GREEN, YELLOW, BLUE, NC
+from validate_config import validate
 
 # ========================================
 # Cargar configuración desde .env
@@ -479,6 +481,15 @@ def main():
     os.chdir(project_dir)
 
     print(f"📂 Directorio proyecto: {project_dir}\n")
+
+    # Validar configuración antes de continuar
+    print(f"{BLUE}Validando configuración...{NC}\n")
+    is_valid, errors = validate(verbose=True)
+    if not is_valid:
+        print(f"\n{YELLOW}⚠️  Configuración tiene errores, pero continuando...{NC}")
+        print(f"{YELLOW}   Corrige los errores en .env para evitar problemas{NC}\n")
+    else:
+        print()
 
     # Conectar a WebREPL (busca automáticamente si no hay IP en .env)
     ws = connect_webrepl()
