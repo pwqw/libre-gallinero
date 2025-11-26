@@ -135,7 +135,7 @@ class TestStartWebrepl:
     def test_start_webrepl_starts_webrepl(self):
         with patch('webrepl.start') as mock_webrepl_start, \
              patch('gc.collect') as mock_gc_collect, \
-             patch('gc.mem_free', return_value=50000), \
+             patch('gc.mem_free', return_value=50000, create=True), \
              patch('sys.stdout') as mock_stdout:
             mock_stdout.flush = Mock()
             from src.wifi import _start_webrepl

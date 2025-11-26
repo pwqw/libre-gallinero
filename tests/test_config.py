@@ -265,9 +265,10 @@ class TestLoadConfig:
         
         assert cfg['WIFI_SSID'] == 'test_ssid'
         # Verificar que get() no falla con claves faltantes
-        assert cfg.get('APP', 'N/A') == 'N/A'
+        # load_config() siempre aplica defaults, así que APP será 'blink'
+        assert cfg.get('APP', 'N/A') == 'blink'
         mock_log.assert_any_call("SSID configurado: test_ssid")
-        mock_log.assert_any_call("App: N/A")
+        mock_log.assert_any_call("App: blink")
     
     @patch('src.config.parse_env')
     @patch('src.config.log')

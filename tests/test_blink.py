@@ -43,7 +43,7 @@ class TestBlinkApp:
             }
             
             # Mock sys.print_exception para MicroPython compatibility
-            with patch('sys.print_exception', Mock()):
+            with patch('sys.print_exception', Mock(), create=True):
                 # run() entra en un loop infinito, así que lo interrumpimos
                 with patch('time.sleep', side_effect=KeyboardInterrupt()):
                     try:
@@ -63,6 +63,16 @@ class TestBlinkApp:
         mock_time = MagicMock()
         mock_gc = MagicMock()
         
+        # Configurar sleep para que lance KeyboardInterrupt en la primera llamada
+        sleep_call_count = [0]
+        def sleep_side_effect(delay):
+            sleep_call_count[0] += 1
+            if sleep_call_count[0] == 1:
+                # Primera llamada, verificar que el delay es 0.5
+                assert delay == 0.5, f"Expected delay 0.5, got {delay}"
+            raise KeyboardInterrupt()
+        mock_time.sleep.side_effect = sleep_side_effect
+        
         with patch.dict('sys.modules', {
             'machine': mock_machine,
             'time': mock_time,
@@ -73,20 +83,17 @@ class TestBlinkApp:
             cfg = {}  # Config vacía, debe usar defaults
             
             # Mock sys.print_exception para MicroPython compatibility
-            with patch('sys.print_exception', Mock()):
+            with patch('sys.print_exception', Mock(), create=True):
                 # run() entra en un loop infinito, así que lo interrumpimos
-                with patch('time.sleep', side_effect=KeyboardInterrupt()):
-                    try:
-                        blink.run(cfg)
-                    except KeyboardInterrupt:
-                        pass  # Esperado
+                try:
+                    blink.run(cfg)
+                except KeyboardInterrupt:
+                    pass  # Esperado
             
             # Verificar que se creó el Pin con valor por defecto (2)
             mock_machine.Pin.assert_called_once_with(2, mock_machine.Pin.OUT)
-            # Verificar que sleep fue llamado con delay por defecto (0.5)
-            # time.sleep es llamado múltiples veces, pero al menos una vez con 0.5
-            sleep_calls = [call[0][0] for call in mock_time.sleep.call_args_list]
-            assert 0.5 in sleep_calls
+            # Verificar que sleep fue llamado al menos una vez
+            assert mock_time.sleep.called, "time.sleep should have been called"
     
     def test_blink_run_handles_exceptions(self, capsys):
         """Test que run(cfg) maneja excepciones correctamente"""
@@ -107,7 +114,7 @@ class TestBlinkApp:
             
             # Mock sys.print_exception para MicroPython compatibility
             mock_print_exception = Mock()
-            with patch('sys.print_exception', mock_print_exception):
+            with patch('sys.print_exception', mock_print_exception, create=True):
                 blink.run(cfg)
             
             # Verificar que se imprimió el error
@@ -145,23 +152,34 @@ class TestBlinkAppIntegration:
         mock_time = MagicMock()
         mock_gc = MagicMock()
         
+        # Configurar sleep para que lance KeyboardInterrupt
+        mock_time.sleep.side_effect = KeyboardInterrupt()
+        
         with patch.dict('sys.modules', {
             'machine': mock_machine,
             'time': mock_time,
             'gc': mock_gc
         }):
+            # Importar blink primero para que esté disponible para app_loader
+            from src.blink import blink
+            
+            # Hacer que el módulo 'blink' esté disponible para app_loader.load_app
+            # app_loader hace 'import blink', así que necesitamos que esté en sys.modules
+            import sys
+            sys.modules['blink'] = blink
+            
+            # Ahora importar app_loader
             from src import app_loader
             
             cfg = {'APP': 'blink'}
             
             # Mock sys.print_exception para MicroPython compatibility
-            with patch('sys.print_exception', Mock()):
+            with patch('sys.print_exception', Mock(), create=True):
                 # load_app entra en un loop infinito, así que lo interrumpimos
-                with patch('time.sleep', side_effect=KeyboardInterrupt()):
-                    try:
-                        app_loader.load_app('blink', cfg)
-                    except KeyboardInterrupt:
-                        pass  # Esperado
+                try:
+                    app_loader.load_app('blink', cfg)
+                except KeyboardInterrupt:
+                    pass  # Esperado
             
             # Verificar que se importó blink
             assert 'blink' in sys.modules

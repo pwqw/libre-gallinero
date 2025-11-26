@@ -340,8 +340,9 @@ class TestUploadFiles:
             project_root = Path(tmpdir)
             src_dir = project_root / 'src'
             src_dir.mkdir()
-            test_file = src_dir / 'test.py'
-            test_file.write_text('print("test")')
+            # Crear un archivo base esperado (main.py está en la lista de archivos base)
+            main_file = src_dir / 'main.py'
+            main_file.write_text('print("test")')
             
             from tools.deploy_usb import upload_files
             
@@ -360,14 +361,20 @@ class TestUploadFiles:
             project_root = Path(tmpdir)
             src_dir = project_root / 'src'
             src_dir.mkdir()
-            subdir = src_dir / 'subdir'
-            subdir.mkdir()
-            test_file = subdir / 'test.py'
-            test_file.write_text('print("test")')
+            # Crear un archivo base esperado
+            main_file = src_dir / 'main.py'
+            main_file.write_text('print("test")')
+            # Crear app blink para probar creación de directorios
+            blink_dir = src_dir / 'blink'
+            blink_dir.mkdir()
+            blink_file = blink_dir / 'blink.py'
+            blink_file.write_text('print("blink")')
+            init_file = blink_dir / '__init__.py'
+            init_file.write_text('from .blink import run')
             
             from tools.deploy_usb import upload_files
             
-            upload_files('/dev/ttyUSB0', project_root)
+            upload_files('/dev/ttyUSB0', project_root, app_name='blink')
             
             # Verificar que se intentó crear directorios
             assert mock_run.called
@@ -512,7 +519,8 @@ class TestMain:
         mock_check_ampy.assert_called_once()
         mock_find_ports.assert_called_once()
         mock_find_root.assert_called_once()
-        mock_upload.assert_called_once_with('/dev/ttyUSB0', Path('/tmp/test_project'))
+        # upload_files is called with app_name=None by default (which becomes 'blink' inside)
+        mock_upload.assert_called_once_with('/dev/ttyUSB0', Path('/tmp/test_project'), app_name=None)
         assert "Puerto detectado automáticamente" in captured.out
     
     @patch('tools.deploy_usb.open_serial_monitor')
@@ -648,7 +656,8 @@ class TestMain:
         
         main()
         
-        mock_upload.assert_called_once_with('/dev/ttyUSB1', Path('/tmp/test_project'))
+        # upload_files is called with app_name=None by default (which becomes 'blink' inside)
+        mock_upload.assert_called_once_with('/dev/ttyUSB1', Path('/tmp/test_project'), app_name=None)
     
     @patch('tools.deploy_usb.open_serial_monitor')
     @patch('tools.deploy_usb.upload_files')
