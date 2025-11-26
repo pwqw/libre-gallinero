@@ -57,9 +57,31 @@ def run(cfg):
     hardware.init_hardware()
     
     print('[gallinero] Loop principal...')
+    
+    # Contador para heartbeat periódico (cada ~60 segundos, 2 iteraciones de 30s)
+    iteration = 0
+    heartbeat_interval = 2  # Cada 2 iteraciones = 60 segundos
+    
     while True:
         control_ponedoras(cfg)
         control_pollitos()
         gc.collect()
+        
+        iteration += 1
+        
+        # Heartbeat periódico para mantener serial activo
+        if iteration % heartbeat_interval == 0:
+            try:
+                tm = time.localtime()
+                mem = gc.mem_free()
+                timestamp = f"{tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
+                print(f'[gallinero] 💓 {timestamp} | Mem: {mem}B | Iter: {iteration}')
+                # Flush para asegurar salida inmediata
+                import sys
+                if hasattr(sys.stdout, 'flush'):
+                    sys.stdout.flush()
+            except:
+                pass
+        
         time.sleep(30)
 

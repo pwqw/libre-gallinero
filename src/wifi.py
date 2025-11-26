@@ -43,8 +43,23 @@ def _reset_wlan():
 def _start_webrepl(ip):
     try:
         import webrepl
+        import gc
+        import sys
+        
         webrepl.start()
         log(f"✅ WebREPL: ws://{ip}:8266")
+        
+        # Flush explícito para asegurar salida al serial
+        try:
+            if hasattr(sys.stdout, 'flush'):
+                sys.stdout.flush()
+        except:
+            pass
+        
+        # Liberar memoria inmediatamente después de iniciar WebREPL
+        gc.collect()
+        mem_after_webrepl = gc.mem_free()
+        log(f"Memoria libre (después de WebREPL): {mem_after_webrepl} bytes")
     except:
         pass
 

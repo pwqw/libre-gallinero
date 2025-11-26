@@ -46,6 +46,9 @@ def main():
     feed_wdt()
     import wifi
     wifi.connect_wifi(cfg, wdt_callback=feed_wdt)
+    # Logging de memoria después de WiFi
+    mem_after_wifi = gc.mem_free()
+    log(f"Memoria libre (después de WiFi): {mem_after_wifi} bytes")
     
     # Monitoreo WiFi en background
     try:
@@ -58,10 +61,35 @@ def main():
     # NTP
     feed_wdt()
     import ntp
-    if not ntp.sync_ntp():
+    ntp_ok = ntp.sync_ntp()
+    if not ntp_ok:
         log("⚠ NTP falló")
     feed_wdt()
     gc.collect()
+    
+    # Verificar estado WiFi después de conexión
+    try:
+        import network
+        wlan = network.WLAN(network.STA_IF)
+        wifi_connected = wlan.isconnected()
+        wifi_ip = wlan.ifconfig()[0] if wifi_connected else None
+    except:
+        wifi_connected = False
+        wifi_ip = None
+    
+    # Logging de memoria antes de cargar app
+    mem_after_ntp = gc.mem_free()
+    log(f"Memoria libre (después de NTP): {mem_after_ntp} bytes")
+    
+    # Mensaje de sistema listo
+    log("=" * 40)
+    log("✅ SISTEMA LISTO")
+    log(f"  WiFi: {'✓' if wifi_connected else '✗'} {wifi_ip if wifi_ip else 'No conectado'}")
+    log(f"  WebREPL: {'✓' if wifi_connected else '✗'}")
+    log(f"  NTP: {'✓' if ntp_ok else '✗'}")
+    log(f"  Memoria: {mem_after_ntp} bytes")
+    log(f"  App: {app_name}")
+    log("=" * 40)
     
     # Cargar app
     log("Cargando app...")
