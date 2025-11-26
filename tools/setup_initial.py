@@ -19,7 +19,16 @@ script_dir = Path(__file__).parent.absolute()
 project_dir = script_dir.parent
 sys.path.insert(0, str(project_dir / 'pc'))
 
+# Agregar tools/common al path para funciones compartidas
+sys.path.insert(0, str(script_dir / 'common'))
+
 from serial_monitor import SerialMonitor, find_port, GREEN, YELLOW, BLUE, RED, NC
+from ampy_utils import (
+    run_ampy,
+    ensure_directory_exists,
+    get_base_files_to_upload,
+    verify_app_directory
+)
 
 
 def load_env(project_dir):
@@ -67,175 +76,22 @@ def escape_env_value(value):
         return value
 
 
-def run_ampy(cmd):
-    """Ejecuta comando ampy"""
-    result = subprocess.run(['ampy'] + cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        error_msg = result.stderr.strip() or result.stdout.strip()
-        if error_msg:
-            print(f"{RED}Error: {error_msg}{NC}")
-        else:
-            print(f"{RED}Error: ampy falló con código {result.returncode}{NC}")
-        return False
-    return True
+# Funciones wrapper con colores para compatibilidad
+def run_ampy_colored(cmd):
+    """Wrapper que agrega colores a los mensajes de run_ampy"""
+    result = run_ampy(cmd, verbose=False)
+    if not result:
+        # Los errores ya se muestran en run_ampy, pero podemos agregar formato si es necesario
+        pass
+    return result
 
 
-def ensure_directory_exists(port, dir_name):
-    """
-    Asegura que un directorio existe en el ESP8266.
-    Verifica y crea el directorio de forma robusta usando código Python.
-    
-    Args:
-        port: Puerto serie del ESP8266
-        dir_name: Nombre del directorio a crear
-    
-    Returns:
-        bool: True si el directorio existe o se creó exitosamente, False en caso contrario
-    """
-    # Crear script Python que verifica y crea el directorio
-    create_script = f"""import os
-dir_name = '{dir_name}'
-try:
-    # Listar directorios en la raíz
-    files = os.listdir('/')
-    if dir_name in files:
-        print('DIR_EXISTS')
-    else:
-        # Intentar crear el directorio
-        try:
-            os.mkdir(dir_name)
-            # Verificar que se creó
-            files_after = os.listdir('/')
-            if dir_name in files_after:
-                print('DIR_CREATED')
-            else:
-                print('DIR_FAILED')
-        except OSError as e:
-            # Si el error es EEXIST (17), el directorio ya existe
-            if e.args[0] == 17:
-                print('DIR_EXISTS')
-            else:
-                print(f'DIR_ERROR: {{e.args[0]}}')
-except Exception as e:
-    print(f'DIR_ERROR: {{e}}')
-"""
-    
-    # Usar archivo temporal para ejecutar código Python
-    temp_script = None
-    try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write(create_script)
-            temp_script = f.name
-        
-        # Ejecutar script con ampy run
-        result = subprocess.run(
-            ['ampy', '--port', port, 'run', temp_script],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
-        # Analizar salida
-        output = result.stdout.strip() + result.stderr.strip()
-        
-        if 'DIR_EXISTS' in output or 'DIR_CREATED' in output:
-            return True
-        elif 'DIR_FAILED' in output or 'DIR_ERROR' in output:
-            print(f"{YELLOW}   ⚠️  Error con directorio {dir_name}: {output}{NC}")
-            if result.stdout.strip() or result.stderr.strip():
-                print(f"{YELLOW}      stdout: {result.stdout}{NC}")
-                print(f"{YELLOW}      stderr: {result.stderr}{NC}")
-            return False
-        else:
-            # Si no hay salida reconocible, intentar método alternativo
-            print(f"{YELLOW}   ⚠️  Salida inesperada al crear {dir_name}, intentando método alternativo...{NC}")
-            # Intentar directamente con ampy mkdir y verificar
-            result_mkdir = subprocess.run(
-                ['ampy', '--port', port, 'mkdir', dir_name],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            # Verificar que existe
-            verify_script = f"""import os
-if '{dir_name}' in os.listdir('/'):
-    print('VERIFIED')
-else:
-    print('NOT_FOUND')
-"""
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f2:
-                f2.write(verify_script)
-                temp_verify = f2.name
-            
-            try:
-                result_verify = subprocess.run(
-                    ['ampy', '--port', port, 'run', temp_verify],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                return 'VERIFIED' in (result_verify.stdout + result_verify.stderr)
-            finally:
-                try:
-                    os.unlink(temp_verify)
-                except Exception:
-                    pass
-            return False
-            
-    except subprocess.TimeoutExpired:
-        print(f"{RED}   ❌ Timeout creando directorio {dir_name}{NC}")
-        return False
-    except Exception as e:
-        print(f"{RED}   ❌ Error creando directorio {dir_name}: {e}{NC}")
-        return False
-    finally:
-        # Limpiar archivo temporal
-        if temp_script:
-            try:
-                os.unlink(temp_script)
-            except Exception:
-                pass
-
-
-def get_base_files_to_upload(project_dir):
-    """
-    Get list of base system files + blink app for initial setup.
-    This ensures the ESP8266 works immediately after setup.
-
-    Returns:
-        list: List of tuples (local_path, remote_name) or (None, "mkdir:dirname")
-    """
-    src_dir = Path(project_dir) / 'src'
-    files = []
-
-    # Base modules (required for boot sequence)
-    base_modules = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
-    for filename in base_modules:
-        local_path = src_dir / filename
-        if local_path.exists():
-            files.append((str(local_path), filename))
-        else:
-            print(f"{RED}⚠️  {filename} no encontrado en src/{NC}")
-
-    # Blink app (minimal default app for testing)
-    blink_dir = src_dir / 'blink'
-    if blink_dir.exists():
-        # Create blink directory on ESP8266
-        files.append((None, 'mkdir:blink'))
-
-        # Upload __init__.py first (makes it a valid Python package)
-        init_file = blink_dir / '__init__.py'
-        if init_file.exists():
-            files.append((str(init_file), 'blink/__init__.py'))
-
-        # Upload other .py files in blink/
-        for py_file in blink_dir.glob('*.py'):
-            if py_file.name != '__init__.py':
-                files.append((str(py_file), f'blink/{py_file.name}'))
-    else:
-        print(f"{YELLOW}⚠️  blink/ no encontrado - sistema puede no funcionar{NC}")
-
-    return files
+def ensure_directory_exists_colored(port, dir_name):
+    """Wrapper que agrega colores a los mensajes de ensure_directory_exists"""
+    result = ensure_directory_exists(port, dir_name, verbose=False)
+    if not result:
+        print(f"{YELLOW}   ⚠️  No se pudo crear/verificar directorio {dir_name}{NC}")
+    return result
 
 
 def verify_webrepl_config(port, password):
@@ -325,7 +181,7 @@ def main():
         f.write(f"PASS = '{webrepl_pass}'\n")
         webrepl_cfg = f.name
     
-    if not run_ampy(['--port', port, 'put', webrepl_cfg, 'webrepl_cfg.py']):
+    if not run_ampy_colored(['--port', port, 'put', webrepl_cfg, 'webrepl_cfg.py']):
         os.unlink(webrepl_cfg)
         sys.exit(1)
     os.unlink(webrepl_cfg)
@@ -341,14 +197,14 @@ def main():
         print(f"{RED}❌ No se encontró {boot_path}{NC}")
         sys.exit(1)
     
-    if not run_ampy(['--port', port, 'put', str(boot_path), 'boot.py']):
+    if not run_ampy_colored(['--port', port, 'put', str(boot_path), 'boot.py']):
         sys.exit(1)
     print(f"{GREEN}✅ boot.py instalado{NC}")
     
     # 3. Copiar .env
     print(f"\n{BLUE}[4/5] Copiando .env al ESP8266...{NC}")
     if env_path.exists():
-        if run_ampy(['--port', port, 'put', str(env_path), '.env']):
+        if run_ampy_colored(['--port', port, 'put', str(env_path), '.env']):
             print(f"{GREEN}✅ .env copiado{NC}")
         else:
             print(f"{YELLOW}⚠️  No se pudo copiar .env{NC}")
@@ -361,7 +217,7 @@ def main():
     print(f"\n{BLUE}[5/5] Desplegando sistema completo...{NC}")
     print(f"   Módulos base + app blink (sistema mínimo funcional)")
 
-    base_files = get_base_files_to_upload(project_dir)
+    base_files = get_base_files_to_upload(project_dir, include_app=True, app_name='blink')
 
     if not base_files:
         print(f"{RED}❌ No se encontraron archivos del sistema{NC}")
@@ -376,10 +232,9 @@ def main():
         # Handle directory creation
         if local_path is None and remote_name.startswith('mkdir:'):
             dir_name = remote_name.replace('mkdir:', '')
-            if ensure_directory_exists(port, dir_name):
+            if ensure_directory_exists_colored(port, dir_name):
                 print(f"   📁 {dir_name}/")
             else:
-                print(f"{RED}   ⚠️  No se pudo crear/verificar directorio {dir_name}{NC}")
                 error_count += 1
             continue
 
@@ -388,7 +243,7 @@ def main():
             display_name = Path(local_path).name
             print(f"   📄 {remote_name}")
 
-            if run_ampy(['--port', port, 'put', local_path, remote_name]):
+            if run_ampy_colored(['--port', port, 'put', local_path, remote_name]):
                 success_count += 1
             else:
                 error_count += 1
@@ -400,45 +255,11 @@ def main():
     
     # Verificar que el directorio blink existe y contiene archivos
     print(f"\n{BLUE}🔍 Verificando directorio blink/...{NC}")
-    verify_blink_script = """import os
-try:
-    files = os.listdir('/')
-    if 'blink' in files:
-        blink_files = os.listdir('blink')
-        print(f'BLINK_EXISTS: {blink_files}')
+    if verify_app_directory(port, 'blink', verbose=False):
+        print(f"{GREEN}✅ Directorio blink/ verificado correctamente{NC}")
     else:
-        print('BLINK_NOT_FOUND')
-except Exception as e:
-    print(f'BLINK_ERROR: {e}')
-"""
-    temp_verify = None
-    try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write(verify_blink_script)
-            temp_verify = f.name
-        
-        result_verify = subprocess.run(
-            ['ampy', '--port', port, 'run', temp_verify],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        output = (result_verify.stdout + result_verify.stderr).strip()
-        if 'BLINK_EXISTS' in output:
-            print(f"{GREEN}✅ Directorio blink/ verificado correctamente{NC}")
-        elif 'BLINK_NOT_FOUND' in output:
-            print(f"{RED}❌ Directorio blink/ NO encontrado después del deploy{NC}")
-            print(f"{YELLOW}   Esto indica un problema con la creación del directorio{NC}")
-        else:
-            print(f"{YELLOW}⚠️  Verificación ambigua: {output}{NC}")
-    except Exception as e:
-        print(f"{YELLOW}⚠️  No se pudo verificar directorio blink/: {e}{NC}")
-    finally:
-        if temp_verify:
-            try:
-                os.unlink(temp_verify)
-            except Exception:
-                pass
+        print(f"{RED}❌ Directorio blink/ NO encontrado después del deploy{NC}")
+        print(f"{YELLOW}   Esto indica un problema con la creación del directorio{NC}")
 
     # Resumen final
     print(f"\n{GREEN}{'='*60}{NC}")
