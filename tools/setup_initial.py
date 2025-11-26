@@ -76,6 +76,113 @@ def run_ampy(cmd):
     return True
 
 
+def ensure_directory_exists(port, dir_name):
+    """
+    Asegura que un directorio existe en el ESP8266.
+    Verifica y crea el directorio de forma robusta usando código Python.
+    
+    Args:
+        port: Puerto serie del ESP8266
+        dir_name: Nombre del directorio a crear
+    
+    Returns:
+        bool: True si el directorio existe o se creó exitosamente, False en caso contrario
+    """
+    # Primero intentar con ampy mkdir (método rápido)
+    try:
+        subprocess.run(
+            ['ampy', '--port', port, 'mkdir', dir_name],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        pass  # Continuar con verificación
+    
+    # Verificar y crear el directorio usando código Python (método robusto)
+    verify_code = f"""import os
+try:
+    files = os.listdir('/')
+    if '{dir_name}' in files:
+        print('EXISTS')
+    else:
+        # Directorio no existe, crearlo
+        try:
+            os.mkdir('{dir_name}')
+            print('CREATED')
+        except OSError as e:
+            if e.args[0] == 17:  # EEXIST - ya existe
+                print('EXISTS')
+            else:
+                print(f'ERROR: {{e}}')
+except Exception as e:
+    print(f'ERROR: {{e}}')
+"""
+    
+    # Usar archivo temporal para ejecutar código Python
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(verify_code)
+            temp_script = f.name
+        
+        result = subprocess.run(
+            ['ampy', '--port', port, 'run', temp_script],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        # Limpiar archivo temporal
+        try:
+            os.unlink(temp_script)
+        except Exception:
+            pass
+        
+        output = result.stdout.strip()
+        if 'EXISTS' in output or 'CREATED' in output:
+            return True
+        elif 'ERROR' in output:
+            print(f"{YELLOW}   ⚠️  Error verificando directorio {dir_name}: {output}{NC}")
+            return False
+        else:
+            # Si no hay salida clara, intentar crear directamente
+            create_code = f"""import os
+try:
+    os.mkdir('{dir_name}')
+    print('CREATED')
+except OSError as e:
+    if e.args[0] == 17:  # EEXIST - ya existe
+        print('EXISTS')
+    else:
+        print(f'ERROR: {{e}}')
+"""
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f2:
+                f2.write(create_code)
+                temp_script2 = f2.name
+            
+            try:
+                result2 = subprocess.run(
+                    ['ampy', '--port', port, 'run', temp_script2],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                output2 = result2.stdout.strip()
+                return 'EXISTS' in output2 or 'CREATED' in output2
+            finally:
+                try:
+                    os.unlink(temp_script2)
+                except Exception:
+                    pass
+            return False
+    except subprocess.TimeoutExpired:
+        print(f"{YELLOW}   ⚠️  Timeout verificando directorio {dir_name}{NC}")
+        return False
+    except Exception as e:
+        print(f"{YELLOW}   ⚠️  Error verificando directorio {dir_name}: {e}{NC}")
+        return False
+
+
 def get_base_files_to_upload(project_dir):
     """
     Get list of base system files + blink app for initial setup.
@@ -255,16 +362,11 @@ def main():
         # Handle directory creation
         if local_path is None and remote_name.startswith('mkdir:'):
             dir_name = remote_name.replace('mkdir:', '')
-            try:
-                subprocess.run(
-                    ['ampy', '--port', port, 'mkdir', dir_name],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
+            if ensure_directory_exists(port, dir_name):
                 print(f"   📁 {dir_name}/")
-            except Exception:
-                pass  # Directory might already exist, that's OK
+            else:
+                print(f"{RED}   ⚠️  No se pudo crear/verificar directorio {dir_name}{NC}")
+                error_count += 1
             continue
 
         # Upload file
