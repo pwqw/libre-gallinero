@@ -71,7 +71,11 @@ def run_ampy(cmd):
     """Ejecuta comando ampy"""
     result = subprocess.run(['ampy'] + cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"{RED}Error: {result.stderr}{NC}")
+        error_msg = result.stderr.strip() or result.stdout.strip()
+        if error_msg:
+            print(f"{RED}Error: {error_msg}{NC}")
+        else:
+            print(f"{RED}Error: ampy falló con código {result.returncode}{NC}")
         return False
     return True
 
@@ -88,99 +92,109 @@ def ensure_directory_exists(port, dir_name):
     Returns:
         bool: True si el directorio existe o se creó exitosamente, False en caso contrario
     """
-    # Primero intentar con ampy mkdir (método rápido)
-    try:
-        subprocess.run(
-            ['ampy', '--port', port, 'mkdir', dir_name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-    except Exception:
-        pass  # Continuar con verificación
-    
-    # Verificar y crear el directorio usando código Python (método robusto)
-    verify_code = f"""import os
+    # Crear script Python que verifica y crea el directorio
+    create_script = f"""import os
+dir_name = '{dir_name}'
 try:
+    # Listar directorios en la raíz
     files = os.listdir('/')
-    if '{dir_name}' in files:
-        print('EXISTS')
+    if dir_name in files:
+        print('DIR_EXISTS')
     else:
-        # Directorio no existe, crearlo
+        # Intentar crear el directorio
         try:
-            os.mkdir('{dir_name}')
-            print('CREATED')
-        except OSError as e:
-            if e.args[0] == 17:  # EEXIST - ya existe
-                print('EXISTS')
+            os.mkdir(dir_name)
+            # Verificar que se creó
+            files_after = os.listdir('/')
+            if dir_name in files_after:
+                print('DIR_CREATED')
             else:
-                print(f'ERROR: {{e}}')
+                print('DIR_FAILED')
+        except OSError as e:
+            # Si el error es EEXIST (17), el directorio ya existe
+            if e.args[0] == 17:
+                print('DIR_EXISTS')
+            else:
+                print(f'DIR_ERROR: {{e.args[0]}}')
 except Exception as e:
-    print(f'ERROR: {{e}}')
+    print(f'DIR_ERROR: {{e}}')
 """
     
     # Usar archivo temporal para ejecutar código Python
+    temp_script = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write(verify_code)
+            f.write(create_script)
             temp_script = f.name
         
+        # Ejecutar script con ampy run
         result = subprocess.run(
             ['ampy', '--port', port, 'run', temp_script],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=10
         )
         
-        # Limpiar archivo temporal
-        try:
-            os.unlink(temp_script)
-        except Exception:
-            pass
+        # Analizar salida
+        output = result.stdout.strip() + result.stderr.strip()
         
-        output = result.stdout.strip()
-        if 'EXISTS' in output or 'CREATED' in output:
+        if 'DIR_EXISTS' in output or 'DIR_CREATED' in output:
             return True
-        elif 'ERROR' in output:
-            print(f"{YELLOW}   ⚠️  Error verificando directorio {dir_name}: {output}{NC}")
+        elif 'DIR_FAILED' in output or 'DIR_ERROR' in output:
+            print(f"{YELLOW}   ⚠️  Error con directorio {dir_name}: {output}{NC}")
+            if result.stdout.strip() or result.stderr.strip():
+                print(f"{YELLOW}      stdout: {result.stdout}{NC}")
+                print(f"{YELLOW}      stderr: {result.stderr}{NC}")
             return False
         else:
-            # Si no hay salida clara, intentar crear directamente
-            create_code = f"""import os
-try:
-    os.mkdir('{dir_name}')
-    print('CREATED')
-except OSError as e:
-    if e.args[0] == 17:  # EEXIST - ya existe
-        print('EXISTS')
-    else:
-        print(f'ERROR: {{e}}')
+            # Si no hay salida reconocible, intentar método alternativo
+            print(f"{YELLOW}   ⚠️  Salida inesperada al crear {dir_name}, intentando método alternativo...{NC}")
+            # Intentar directamente con ampy mkdir y verificar
+            result_mkdir = subprocess.run(
+                ['ampy', '--port', port, 'mkdir', dir_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            # Verificar que existe
+            verify_script = f"""import os
+if '{dir_name}' in os.listdir('/'):
+    print('VERIFIED')
+else:
+    print('NOT_FOUND')
 """
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f2:
-                f2.write(create_code)
-                temp_script2 = f2.name
+                f2.write(verify_script)
+                temp_verify = f2.name
             
             try:
-                result2 = subprocess.run(
-                    ['ampy', '--port', port, 'run', temp_script2],
+                result_verify = subprocess.run(
+                    ['ampy', '--port', port, 'run', temp_verify],
                     capture_output=True,
                     text=True,
                     timeout=5
                 )
-                output2 = result2.stdout.strip()
-                return 'EXISTS' in output2 or 'CREATED' in output2
+                return 'VERIFIED' in (result_verify.stdout + result_verify.stderr)
             finally:
                 try:
-                    os.unlink(temp_script2)
+                    os.unlink(temp_verify)
                 except Exception:
                     pass
             return False
+            
     except subprocess.TimeoutExpired:
-        print(f"{YELLOW}   ⚠️  Timeout verificando directorio {dir_name}{NC}")
+        print(f"{RED}   ❌ Timeout creando directorio {dir_name}{NC}")
         return False
     except Exception as e:
-        print(f"{YELLOW}   ⚠️  Error verificando directorio {dir_name}: {e}{NC}")
+        print(f"{RED}   ❌ Error creando directorio {dir_name}: {e}{NC}")
         return False
+    finally:
+        # Limpiar archivo temporal
+        if temp_script:
+            try:
+                os.unlink(temp_script)
+            except Exception:
+                pass
 
 
 def get_base_files_to_upload(project_dir):
@@ -383,6 +397,48 @@ def main():
     print(f"\n{GREEN}✅ Sistema desplegado: {success_count} archivos{NC}")
     if error_count > 0:
         print(f"{YELLOW}⚠️  Advertencias: {error_count} archivos{NC}")
+    
+    # Verificar que el directorio blink existe y contiene archivos
+    print(f"\n{BLUE}🔍 Verificando directorio blink/...{NC}")
+    verify_blink_script = """import os
+try:
+    files = os.listdir('/')
+    if 'blink' in files:
+        blink_files = os.listdir('blink')
+        print(f'BLINK_EXISTS: {blink_files}')
+    else:
+        print('BLINK_NOT_FOUND')
+except Exception as e:
+    print(f'BLINK_ERROR: {e}')
+"""
+    temp_verify = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(verify_blink_script)
+            temp_verify = f.name
+        
+        result_verify = subprocess.run(
+            ['ampy', '--port', port, 'run', temp_verify],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        output = (result_verify.stdout + result_verify.stderr).strip()
+        if 'BLINK_EXISTS' in output:
+            print(f"{GREEN}✅ Directorio blink/ verificado correctamente{NC}")
+        elif 'BLINK_NOT_FOUND' in output:
+            print(f"{RED}❌ Directorio blink/ NO encontrado después del deploy{NC}")
+            print(f"{YELLOW}   Esto indica un problema con la creación del directorio{NC}")
+        else:
+            print(f"{YELLOW}⚠️  Verificación ambigua: {output}{NC}")
+    except Exception as e:
+        print(f"{YELLOW}⚠️  No se pudo verificar directorio blink/: {e}{NC}")
+    finally:
+        if temp_verify:
+            try:
+                os.unlink(temp_verify)
+            except Exception:
+                pass
 
     # Resumen final
     print(f"\n{GREEN}{'='*60}{NC}")
