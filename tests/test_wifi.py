@@ -133,10 +133,16 @@ class TestStartWebrepl:
     """Tests para _start_webrepl()"""
     
     def test_start_webrepl_starts_webrepl(self):
-        with patch('webrepl.start') as mock_webrepl_start:
+        with patch('webrepl.start') as mock_webrepl_start, \
+             patch('gc.collect') as mock_gc_collect, \
+             patch('gc.mem_free', return_value=50000), \
+             patch('sys.stdout') as mock_stdout:
+            mock_stdout.flush = Mock()
             from src.wifi import _start_webrepl
             _start_webrepl("192.168.0.100")
             mock_webrepl_start.assert_called_once()
+            mock_gc_collect.assert_called_once()
+            mock_stdout.flush.assert_called()
     
     def test_start_webrepl_handles_exception(self):
         with patch('webrepl.start') as mock_webrepl_start:

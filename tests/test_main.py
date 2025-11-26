@@ -14,7 +14,7 @@ def import_main_safely(capsys=None, **kwargs):
     sys.modules.pop('app_loader', None)
     
     # Valores por defecto para los mocks
-    config_return = kwargs.get('config_return', {'APP': 'heladera'})
+    config_return = kwargs.get('config_return', {'APP': 'blink'})
     ntp_return = kwargs.get('ntp_return', True)
     wdt_available = kwargs.get('wdt_available', True)
     thread_available = kwargs.get('thread_available', True)
@@ -56,12 +56,21 @@ def import_main_safely(capsys=None, **kwargs):
         mock_thread_start.side_effect = ImportError("No module named '_thread'")
     mock_thread_module.start_new_thread = mock_thread_start
     
+    # Mock de network (agregado para el nuevo código en main.py)
+    mock_network = MagicMock()
+    mock_network.STA_IF = 1
+    mock_wlan = MagicMock()
+    mock_wlan.isconnected.return_value = True
+    mock_wlan.ifconfig.return_value = ("192.168.0.100", "255.255.255.0", "192.168.0.1", "8.8.8.8")
+    mock_network.WLAN.return_value = mock_wlan
+    
     # Mockear dependencias de MicroPython
     with patch.object(gc, 'mem_free', return_value=50000, create=True), \
          patch.object(sys, 'print_exception', create=True), \
          patch.dict('sys.modules', {
              'machine': mock_machine,
              '_thread': mock_thread_module if thread_available else None,
+             'network': mock_network,
              'config': mock_config,
              'wifi': mock_wifi,
              'ntp': mock_ntp,
@@ -225,7 +234,7 @@ class TestMain:
     @pytest.mark.timeout(10)
     @pytest.mark.skip(reason="Test complejo - requiere verificación de salida específica")
     def test_main_default_app(self, capsys):
-        """Test main() usa 'heladera' como app por defecto - simplificado"""
+        """Test main() usa 'blink' como app por defecto - simplificado"""
         # Este test es complejo y depende de la salida específica
         # Se omite para preservar simplicidad
         pass

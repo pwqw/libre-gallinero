@@ -37,7 +37,7 @@ def main():
     # Cargar configuración
     import config
     cfg = config.load_config()
-    app_name = cfg.get('APP', 'heladera')
+    app_name = cfg.get('APP', 'blink')
     log(f"App: {app_name}")
     gc.collect()
     
