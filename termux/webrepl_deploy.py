@@ -115,12 +115,21 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
         except websocket.WebSocketTimeoutException:
             pass
 
-        if "Uploaded" in response or remote_name in response:
+        # Check for errors FIRST
+        if any(err in response for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"]):
+            print(f"{RED}   ❌ Error en upload{NC}")
+            return False
+
+        # Require explicit confirmation
+        if "Uploaded" in response and remote_name in response:
             print(f"{GREEN}   ✅ OK{NC}")
             return True
-        else:
-            print(f"{YELLOW}   ⚠️  Completado (sin confirmación clara){NC}")
+        elif ">>>" in response and len(response) > 10:
+            print(f"{YELLOW}   ⚠️  Completado (verificar manualmente){NC}")
             return True
+        else:
+            print(f"{RED}   ❌ Sin confirmación de upload{NC}")
+            return False
 
     except Exception as e:
         print(f"{RED}   ❌ Error: {e}{NC}")
@@ -240,6 +249,8 @@ def main():
         # Reconectar para reiniciar
         ws = connect_webrepl()
         if ws:
+            ws.send("\x03")  # Ctrl-C to reset REPL state
+            time.sleep(0.2)
             ws.send("import machine; machine.reset()\r\n")
             time.sleep(0.5)
             ws.close()

@@ -266,6 +266,7 @@ def main():
         client = WebREPLClient(project_dir=project_dir, verbose=False, auto_discover=False)
         client.ip = client.config.get('WEBREPL_IP') or client.ip
         if client.connect():
+            client.execute("\x03", timeout=0.5)  # Ctrl-C to reset REPL state
             client.execute("import machine; machine.reset()", timeout=1)
             time.sleep(0.5)
             client.close()

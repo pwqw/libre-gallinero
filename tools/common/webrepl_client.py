@@ -509,16 +509,29 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
             except websocket.WebSocketTimeoutException:
                 pass
             
-            if "Uploaded" in response or remote_name in response:
+            # Check for errors FIRST
+            if any(err in response for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"]):
+                if self.verbose:
+                    print(f"{RED}   ❌ Error en upload{NC}")
+                logger.error(f"Error detectado durante upload de {remote_name}: {response[:200]}")
+                return False
+
+            # Require explicit confirmation
+            if "Uploaded" in response and remote_name in response:
                 if self.verbose:
                     print(f"{GREEN}   ✅ OK{NC}")
                 logger.info(f"Archivo subido exitosamente: {remote_name}")
                 return True
+            elif ">>>" in response and len(response) > 10:
+                if self.verbose:
+                    print(f"{YELLOW}   ⚠️  Completado (verificar manualmente){NC}")
+                logger.warning(f"Upload completado sin confirmación explícita: {remote_name}")
+                return True
             else:
                 if self.verbose:
-                    print(f"{YELLOW}   ⚠️  Completado (sin confirmación clara){NC}")
-                logger.warning(f"Upload completado sin confirmación clara: {remote_name}")
-                return True
+                    print(f"{RED}   ❌ Sin confirmación de upload{NC}")
+                logger.error(f"No se recibió confirmación de upload para {remote_name}")
+                return False
         
         except ValueError:
             # Re-lanzar ValueError (tamaño de archivo)
