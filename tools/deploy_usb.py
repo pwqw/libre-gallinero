@@ -284,10 +284,12 @@ def open_serial_monitor(port):
 def main():
     print_banner()
     
-    # Parse app argument
+    # Parse app argument (filter out pytest arguments)
     app_name = None
-    if len(sys.argv) > 1:
-        app_name = sys.argv[1]
+    # Filter out pytest arguments (--rootdir, --verbose, etc.)
+    args = [arg for arg in sys.argv[1:] if not arg.startswith('--')]
+    if args:
+        app_name = args[0]
         print(f"{BLUE}📦 App especificada: {app_name}{NC}\n")
     
     # Verificar ampy
