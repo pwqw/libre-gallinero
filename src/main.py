@@ -37,8 +37,8 @@ def main():
     # Cargar configuración
     import config
     cfg = config.load_config()
-    project = cfg.get('PROJECT', 'heladera')
-    log(f"Proyecto: {project}")
+    app_name = cfg.get('APP', 'heladera')
+    log(f"App: {app_name}")
     gc.collect()
     
     # Conectar WiFi
@@ -63,17 +63,17 @@ def main():
     feed_wdt()
     gc.collect()
     
-    # Cargar proyecto (opcional)
-    log("Cargando proyecto...")
+    # Cargar app
+    log("Cargando app...")
     feed_wdt()
     try:
-        import project_loader
-        project_loader.load_project(project, cfg)
-        log("✅ Proyecto cargado")
+        import app_loader
+        app_loader.load_app(app_name, cfg)
+        log("✅ App cargada")
     except ImportError:
-        log("⚠ Proyecto no encontrado (normal en setup inicial)")
+        log("⚠ App no encontrada (normal en setup inicial)")
     except Exception as e:
-        log(f"⚠ Error proyecto: {e}")
+        log(f"⚠ Error app: {e}")
     feed_wdt()
     
     log("✅ Sistema operativo")

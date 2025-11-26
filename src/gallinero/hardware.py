@@ -1,4 +1,4 @@
-# Hardware initialization and control for gallinero project
+# Hardware initialization and control for gallinero app
 
 try:
     import machine

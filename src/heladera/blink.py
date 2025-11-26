@@ -1,4 +1,5 @@
-# Simple LED blink example for heladera project
+# Heladera App - LED blink example
+# Interfaz común: run(cfg)
 
 try:
     import machine
@@ -10,13 +11,25 @@ except ImportError:
 # LED pin (built-in LED on NodeMCU is usually GPIO 2)
 LED_PIN = 2
 
-def blink_led(pin=LED_PIN, delay=0.5):
-    """Simple LED blink function"""
+def run(cfg):
+    """
+    Función principal de la app heladera.
+    
+    Interfaz común para todas las apps: recibe cfg y ejecuta el loop principal.
+    """
+    print('\n=== heladera/app ===')
+    gc.collect()
+    
     try:
+        # Obtener configuración (opcional)
+        pin = int(cfg.get('LED_PIN', LED_PIN))
+        delay = float(cfg.get('LED_DELAY', 0.5))
+        
         led = machine.Pin(pin, machine.Pin.OUT)
-        print(f'[heladera/blink] LED inicializado en pin {pin}')
+        print(f'[heladera] LED inicializado en pin {pin}')
         gc.collect()
         
+        print('[heladera] Loop principal...')
         while True:
             led.on()
             time.sleep(delay)
@@ -24,5 +37,7 @@ def blink_led(pin=LED_PIN, delay=0.5):
             time.sleep(delay)
             gc.collect()
     except Exception as e:
-        print(f'[heladera/blink] Error: {e}')
+        print(f'[heladera] Error: {e}')
+        import sys
+        sys.print_exception(e)
 

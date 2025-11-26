@@ -1,7 +1,7 @@
-# Heladera Project
-# Main entry point
+# Heladera App
+# Main entry point - interfaz común para apps
 
-from .blink import blink_led
+from .blink import run
 
-__all__ = ['blink_led']
+__all__ = ['run']
 

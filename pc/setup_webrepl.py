@@ -199,7 +199,7 @@ def main():
 
     # 3. Copiar módulos principales (REQUERIDO - lógica modularizada)
     print(f"\n{BLUE}[4/6] Copiando módulos principales...{NC}")
-    modules = ['main.py', 'config.py', 'wifi.py', 'ntp.py', 'project_loader.py']
+    modules = ['main.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
     for module in modules:
         module_path = os.path.join(project_dir, 'src', module)
         if not os.path.exists(module_path):
@@ -236,7 +236,7 @@ def main():
     print(f"{BLUE}📋 Resumen:{NC}")
     print(f"   • webrepl_cfg.py: Configurado")
     print(f"   • boot.py: Instalado")
-    print(f"   • Módulos base: main.py, config.py, wifi.py, ntp.py, project_loader.py")
+    print(f"   • Módulos base: main.py, config.py, wifi.py, ntp.py, app_loader.py")
     print(f"   • .env: Copiado (WiFi: {wifi_ssid})")
     print(f"\n{YELLOW}⚠️  NOTA: Este setup NO incluye proyectos (gallinero/heladera){NC}")
     print(f"   Los proyectos se instalan después vía deploy WiFi:\n")

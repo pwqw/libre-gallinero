@@ -1,5 +1,5 @@
-# Gallinero (Chicken Coop) Project
-# Main entry point
+# Gallinero (Chicken Coop) App
+# Main entry point - interfaz común para apps
 
 from .app import run
 

@@ -43,9 +43,9 @@ def load_config():
                 'WIFI_HIDDEN': 'false',
                 'LATITUDE': '-31.4167',
                 'LONGITUDE': '-64.1833',
-                'PROJECT': 'heladera'
+                'APP': 'heladera'
             }
     log(f"SSID configurado: {cfg.get('WIFI_SSID', 'N/A')}")
-    log(f"Proyecto: {cfg.get('PROJECT', 'N/A')}")
+    log(f"App: {cfg.get('APP', 'N/A')}")
     return cfg
 

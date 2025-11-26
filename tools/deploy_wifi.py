@@ -15,7 +15,7 @@ Uso:
     python3 tools/deploy_wifi.py heladera 192.168.1.100
 
 Archivos base copiados (coherente con setup_webrepl.py):
-    - boot.py, main.py, config.py, wifi.py, ntp.py, project_loader.py
+    - boot.py, main.py, config.py, wifi.py, ntp.py, app_loader.py
 
 Proyectos (cuando se especifica):
     - heladera/ → heladera/__init__.py, heladera/blink.py
@@ -59,7 +59,7 @@ def get_files_to_upload(project_dir, project_name=None):
     
     # Archivos principales de Python (módulos base - coherente con setup_webrepl.py)
     # NOTA: solar.py y logic.py están dentro de gallinero/, no en src/ directamente
-    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'project_loader.py']
+    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
     for filename in main_files:
         local_path = src_dir / filename
         if local_path.exists():
@@ -170,7 +170,8 @@ def main():
     print(f"📂 Directorio proyecto: {project_dir}\n")
     
     # Opcional: git pull si estamos en un repo git
-    if Path(project_dir / '.git').exists():
+    git_path = Path(str(project_dir)) / '.git'
+    if git_path.exists():
         try:
             subprocess.run(['git', 'pull', '--rebase'], 
                          check=False, 
@@ -219,7 +220,7 @@ def main():
         print()
     
     # Copiar .env si existe en el repositorio
-    env_path = project_dir / '.env'
+    env_path = Path(str(project_dir)) / '.env'
     if env_path.exists():
         print(f"{BLUE}📄 Copiando .env al ESP8266...{NC}")
         if client.send_file(str(env_path), '.env'):
