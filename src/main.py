@@ -50,13 +50,17 @@ def main():
     mem_after_wifi = gc.mem_free()
     log(f"Memoria libre (después de WiFi): {mem_after_wifi} bytes")
     
-    # Monitoreo WiFi en background
+    # Monitoreo WiFi en background (opcional - solo si _thread disponible)
     try:
         import _thread
         _thread.start_new_thread(wifi.monitor_wifi, (30,))
         log("✅ Monitoreo WiFi iniciado")
+    except ImportError:
+        # _thread no disponible en este firmware - sistema funciona sin él
+        pass
     except:
-        log("⚠ _thread no disponible")
+        # Otro error - ignorar silenciosamente
+        pass
     
     # NTP
     feed_wdt()
