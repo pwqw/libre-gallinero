@@ -492,13 +492,19 @@ class WebREPLClient:
                 # Usar base64 encoding para archivos con contenido problemático
                 import base64
                 content_b64 = base64.b64encode(content.encode('utf-8')).decode('ascii')
+                # Validar que ubinascii esté disponible (debería estar en MicroPython)
                 upload_code = f"""{dir_creation}import gc
 gc.collect()
-import ubinascii
+try:
+    import ubinascii
+except ImportError:
+    print('❌ Error: ubinascii no disponible')
+    raise
 with open('{remote_name}', 'wb') as f:
     f.write(ubinascii.a2b_base64('{content_b64}'))
 print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
 """
+                logger.info(f"Usando base64 para {remote_name} (tamaño encoded: {len(content_b64)} caracteres)")
             else:
                 # Usar método normal con escaping mejorado
                 upload_code = f"""{dir_creation}import gc
@@ -538,24 +544,29 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
             if any(err in response for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"]):
                 if self.verbose:
                     print(f"{RED}   ❌ Error en upload{NC}")
-                logger.error(f"Error detectado durante upload de {remote_name}: {response[:200]}")
+                    # Mostrar parte del error para debugging
+                    error_lines = [line for line in response.split('\n') if any(err in line for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"])]
+                    if error_lines:
+                        print(f"{YELLOW}      {error_lines[0][:80]}{NC}")
+                logger.error(f"Error detectado durante upload de {remote_name}: {response[:300]}")
                 return False
 
             # Require explicit confirmation
             if "Uploaded" in response and remote_name in response:
                 if self.verbose:
                     print(f"{GREEN}   ✅ OK{NC}")
-                logger.info(f"Archivo subido exitosamente: {remote_name}")
+                logger.info(f"Archivo subido exitosamente: {remote_name} ({file_size} bytes)")
                 return True
             elif ">>>" in response and len(response) > 10:
                 if self.verbose:
                     print(f"{YELLOW}   ⚠️  Completado (verificar manualmente){NC}")
-                logger.warning(f"Upload completado sin confirmación explícita: {remote_name}")
+                logger.warning(f"Upload completado sin confirmación explícita: {remote_name} (respuesta: {len(response)} caracteres)")
                 return True
             else:
                 if self.verbose:
                     print(f"{RED}   ❌ Sin confirmación de upload{NC}")
-                logger.error(f"No se recibió confirmación de upload para {remote_name}")
+                    print(f"{YELLOW}      Respuesta recibida: {len(response)} caracteres{NC}")
+                logger.error(f"No se recibió confirmación de upload para {remote_name}. Respuesta: {response[:200]}")
                 return False
         
         except ValueError:

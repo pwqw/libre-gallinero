@@ -123,21 +123,30 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
         ws.send(upload_code + '\r\n')
         time.sleep(0.5)
 
-        # Leer respuesta
+        # Leer respuesta con timeout consistente
         response = ""
         try:
-            while True:
-                data = ws.recv()
-                if isinstance(data, bytes):
-                    response += data.decode('utf-8', errors='ignore')
-                else:
-                    response += data
+            start_time = time.time()
+            timeout = 10  # Timeout de 10 segundos para recibir respuesta
+            while time.time() - start_time < timeout:
+                try:
+                    ws.settimeout(1)  # Timeout de 1 segundo por recv
+                    data = ws.recv()
+                    if isinstance(data, bytes):
+                        response += data.decode('utf-8', errors='ignore')
+                    else:
+                        response += data
 
-                # Verificar si ya tenemos la confirmación
-                if "Uploaded" in response or ">>>" in response:
-                    break
+                    # Verificar si ya tenemos la confirmación o error
+                    if "Uploaded" in response or ">>>" in response:
+                        break
+                    if any(err in response for err in ["Traceback", "Error:"]):
+                        break  # Exit early on error
 
-                time.sleep(0.1)
+                    time.sleep(0.1)
+                except websocket.WebSocketTimeoutException:
+                    # Continuar intentando hasta el timeout total
+                    pass
         except websocket.WebSocketTimeoutException:
             pass
 
