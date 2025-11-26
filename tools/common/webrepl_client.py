@@ -147,7 +147,7 @@ def test_webrepl_connection(ip, password, port=8266, timeout=2):
         return False
 
 
-def find_esp8266_in_network(password, port=8266, verbose=True):
+def find_esp8266_in_network(password, port=8266, verbose=True, max_hosts=100):
     """
     Escanea la red local buscando un ESP8266 con WebREPL activo.
     
@@ -155,6 +155,7 @@ def find_esp8266_in_network(password, port=8266, verbose=True):
         password: Password de WebREPL
         port: Puerto WebREPL (default: 8266)
         verbose: Si True, muestra mensajes de progreso
+        max_hosts: Número máximo de hosts a escanear (default: 100)
     
     Returns:
         str: IP del ESP8266 encontrado, o None si no se encuentra
@@ -182,10 +183,13 @@ def find_esp8266_in_network(password, port=8266, verbose=True):
         print(f"   Probando puerto {port} con password '{password}'...\n")
     
     found_ip = None
-    total_hosts = len(list(network.hosts()))
+    hosts_list = list(network.hosts())
+    total_hosts = min(len(hosts_list), max_hosts)  # Limitar número de hosts
     checked = 0
     
     lock = threading.Lock()
+    start_time = time.time()
+    max_scan_time = 30  # Timeout máximo de 30 segundos para el escaneo
     
     def check_host(host_ip):
         nonlocal found_ip
@@ -201,8 +205,12 @@ def find_esp8266_in_network(password, port=8266, verbose=True):
                         print(f"\n{GREEN}✅ ESP8266 encontrado en: {host_str}{NC}\n")
     
     threads = []
-    for host in network.hosts():
+    for host in hosts_list[:max_hosts]:  # Limitar a max_hosts
         if found_ip:
+            break
+        if time.time() - start_time > max_scan_time:
+            if verbose:
+                print(f"\n{YELLOW}⚠️  Timeout de escaneo alcanzado ({max_scan_time}s){NC}")
             break
         t = threading.Thread(target=check_host, args=(host,))
         t.daemon = True
@@ -218,6 +226,7 @@ def find_esp8266_in_network(password, port=8266, verbose=True):
                 t.join(timeout=0.1)
             threads = [t for t in threads if t.is_alive()]
     
+    # Esperar a que terminen los threads restantes con timeout
     for t in threads:
         t.join(timeout=0.5)
     
@@ -479,15 +488,22 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
             
             response = ""
             try:
-                while True:
-                    data = self.ws.recv()
-                    if isinstance(data, bytes):
-                        response += data.decode('utf-8', errors='ignore')
-                    else:
-                        response += data
-                    
-                    if "Uploaded" in response or ">>>" in response:
-                        break
+                start_time = time.time()
+                timeout = 10  # Timeout de 10 segundos para recibir respuesta
+                while time.time() - start_time < timeout:
+                    try:
+                        self.ws.settimeout(1)  # Timeout de 1 segundo por recv
+                        data = self.ws.recv()
+                        if isinstance(data, bytes):
+                            response += data.decode('utf-8', errors='ignore')
+                        else:
+                            response += data
+                        
+                        if "Uploaded" in response or ">>>" in response:
+                            break
+                    except websocket.WebSocketTimeoutException:
+                        # Continuar intentando hasta el timeout total
+                        pass
                     
                     time.sleep(0.1)
             except websocket.WebSocketTimeoutException:
