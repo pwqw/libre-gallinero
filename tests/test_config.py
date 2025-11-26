@@ -53,7 +53,7 @@ class TestParseEnv:
 WIFI_PASSWORD=test_password
 LATITUDE=-31.4167
 LONGITUDE=-64.1833
-PROJECT=gallinero
+APP=gallinero
 """
         with patch('builtins.open', mock_open(read_data=env_content)):
             from src import config
@@ -63,7 +63,7 @@ PROJECT=gallinero
             assert cfg['WIFI_PASSWORD'] == 'test_password'
             assert cfg['LATITUDE'] == '-31.4167'
             assert cfg['LONGITUDE'] == '-64.1833'
-            assert cfg['PROJECT'] == 'gallinero'
+            assert cfg['APP'] == 'gallinero'
     
     def test_parse_env_with_quotes(self):
         """Test que parse_env() elimina comillas de los valores"""
@@ -235,10 +235,10 @@ class TestLoadConfig:
         assert cfg['WIFI_HIDDEN'] == 'false'
         assert cfg['LATITUDE'] == '-31.4167'
         assert cfg['LONGITUDE'] == '-64.1833'
-        assert cfg['APP'] == 'heladera'
+        assert cfg['APP'] == 'blink'
         mock_log.assert_any_call("Usando configuración por defecto")
         mock_log.assert_any_call("SSID configurado: libre gallinero")
-        mock_log.assert_any_call("App: heladera")
+        mock_log.assert_any_call("App: blink")
     
     @patch('src.config.parse_env')
     @patch('src.config.log')

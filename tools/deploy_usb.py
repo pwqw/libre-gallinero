@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Script consolidado para subir archivos a ESP8266 vía USB Serial (ampy).
-Compatible con Windows, Mac y Linux.
 
 Uso:
+    # Deploy base + app por defecto (blink):
     python3 tools/deploy_usb.py
-    # O desde el directorio tools/:
-    python3 deploy_usb.py
+
+    # Deploy base + app específica:
+    python3 tools/deploy_usb.py gallinero
+    python3 tools/deploy_usb.py heladera
 
 Requiere:
     pip install adafruit-ampy pyserial
@@ -131,7 +133,60 @@ def find_project_root():
     return None
 
 
-def upload_files(port, project_root):
+def get_files_to_upload_usb(project_root, app_name=None):
+    """
+    Obtiene lista de archivos a subir desde src/.
+    Similar a deploy_wifi.py pero para USB/ampy.
+    
+    Args:
+        project_root: Directorio raíz del proyecto
+        app_name: Nombre de la app a incluir (blink, gallinero, heladera, etc.)
+    
+    Returns:
+        list: Lista de tuplas (local_path, remote_name) o (None, "mkdir:dirname") para directorios
+    """
+    src_dir = project_root / 'src'
+    files = []
+    
+    # Base modules
+    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
+    for filename in main_files:
+        local_path = src_dir / filename
+        if local_path.exists():
+            files.append((str(local_path), filename))
+    
+    # App-specific files
+    if app_name:
+        app_dir_path = src_dir / app_name
+        if app_dir_path.exists() and app_dir_path.is_dir():
+            print(f"{BLUE}📦 Incluyendo archivos de la app: {app_name}{NC}")
+            
+            # Create app directory
+            files.append((None, f"mkdir:{app_name}"))
+            
+            # Upload __init__.py first
+            init_file = app_dir_path / '__init__.py'
+            if init_file.exists():
+                remote_name = f"{app_name}/__init__.py"
+                files.append((str(init_file), remote_name))
+            
+            # Upload other .py files
+            for py_file in app_dir_path.glob('*.py'):
+                if py_file.name != '__init__.py':
+                    remote_name = f"{app_name}/{py_file.name}"
+                    files.append((str(py_file), remote_name))
+    
+    # Templates if exist
+    templates_dir = src_dir / 'templates'
+    if templates_dir.exists():
+        files.append((None, "mkdir:templates"))
+        for html_file in templates_dir.glob('*.html'):
+            files.append((str(html_file), f"templates/{html_file.name}"))
+    
+    return files
+
+
+def upload_files(port, project_root, app_name=None):
     """Sube archivos desde src/ a la placa ESP8266 usando ampy CLI"""
     src_dir = project_root / 'src'
     
@@ -139,45 +194,58 @@ def upload_files(port, project_root):
         print(f"{RED}⛔ No se encontró el directorio src/{NC}")
         return False
     
+    # Si no se especificó app, usar blink por defecto
+    if not app_name:
+        app_name = 'blink'
+        print(f"{BLUE}📦 Usando app por defecto: blink{NC}\n")
+    
     print(f"{BLUE}📤 Subiendo archivos desde src/ a la placa ESP8266...{NC}\n")
+    
+    # Obtener lista de archivos a subir
+    files_to_upload = get_files_to_upload_usb(project_root, app_name=app_name)
+    
+    if not files_to_upload:
+        print(f"{RED}❌ No se encontraron archivos para subir{NC}")
+        return False
     
     success_count = 0
     error_count = 0
     
     try:
-        # Subir directorios primero (excluyendo __pycache__)
-        for dir_path in src_dir.rglob('*'):
-            if dir_path.is_dir() and '__pycache__' not in str(dir_path):
-                remote_dir = str(dir_path.relative_to(src_dir))
-                if remote_dir:
-                    try:
-                        subprocess.run(
-                            ['ampy', '--port', port, 'mkdir', remote_dir],
-                            check=False,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
-                        )
-                    except Exception:
-                        pass
-        
-        # Subir archivos
-        for file_path in src_dir.rglob('*'):
-            if file_path.is_file() and '__pycache__' not in str(file_path) and not file_path.name.endswith('.pyc'):
-                remote_file = str(file_path.relative_to(src_dir))
+        # Procesar archivos y directorios
+        for item in files_to_upload:
+            local_path, remote_name = item
+            
+            # Handle directory creation
+            if local_path is None and remote_name.startswith('mkdir:'):
+                dir_name = remote_name.replace('mkdir:', '')
                 try:
-                    print(f"📄 Subiendo: {file_path.name} → {remote_file}")
+                    subprocess.run(
+                        ['ampy', '--port', port, 'mkdir', dir_name],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                except Exception:
+                    pass
+                continue
+            
+            # Upload file
+            if local_path and Path(local_path).exists():
+                try:
+                    print(f"📄 Subiendo: {Path(local_path).name} → {remote_name}")
                     result = subprocess.run(
-                        ['ampy', '--port', port, 'put', str(file_path), remote_file],
+                        ['ampy', '--port', port, 'put', local_path, remote_name],
                         capture_output=True,
                         text=True
                     )
                     if result.returncode == 0:
                         success_count += 1
                     else:
-                        print(f"{RED}⚠️  Error al subir {file_path.name}: {result.stderr}{NC}")
+                        print(f"{RED}⚠️  Error al subir {remote_name}: {result.stderr}{NC}")
                         error_count += 1
                 except Exception as e:
-                    print(f"{RED}⚠️  Error al subir {file_path.name}: {e}{NC}")
+                    print(f"{RED}⚠️  Error al subir {remote_name}: {e}{NC}")
                     error_count += 1
         
         print(f"\n{GREEN}✨ ¡Carga exitosa! ✅{NC}")
@@ -215,6 +283,12 @@ def open_serial_monitor(port):
 
 def main():
     print_banner()
+    
+    # Parse app argument
+    app_name = None
+    if len(sys.argv) > 1:
+        app_name = sys.argv[1]
+        print(f"{BLUE}📦 App especificada: {app_name}{NC}\n")
     
     # Verificar ampy
     if not check_ampy_installed():
@@ -271,7 +345,7 @@ def main():
     os.chdir(project_root)
     
     # Subir archivos
-    if upload_files(selected_port, project_root):
+    if upload_files(selected_port, project_root, app_name=app_name):
         # Preguntar si abrir monitor serie
         print()
         try:

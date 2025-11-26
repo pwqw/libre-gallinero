@@ -21,7 +21,10 @@ def load_app(app_name, cfg):
     gc.collect()
     
     try:
-        if app_name == 'gallinero':
+        if app_name == 'blink':
+            import blink
+            blink.run(cfg)
+        elif app_name == 'gallinero':
             import gallinero
             gallinero.run(cfg)
         elif app_name == 'heladera':

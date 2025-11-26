@@ -9,7 +9,7 @@ DEFAULT_CONFIG = {
     'WEBREPL_PASSWORD': 'admin',
     'LATITUDE': '-31.4167',
     'LONGITUDE': '-64.1833',
-    'APP': 'heladera'
+    'APP': 'blink'
 }
 
 def log(msg):

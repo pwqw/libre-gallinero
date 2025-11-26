@@ -4,22 +4,23 @@ Script unificado para subir archivos a ESP8266 vía WebREPL (WiFi).
 Funciona tanto en PC como en Termux/Android.
 
 Uso:
-    # Deploy solo módulos base (sin proyecto):
+    # Deploy base + blink app (default):
     python3 tools/deploy_wifi.py
     
-    # Deploy módulos base + proyecto específico:
-    python3 tools/deploy_wifi.py heladera
+    # Deploy base + app específica:
     python3 tools/deploy_wifi.py gallinero
+    python3 tools/deploy_wifi.py heladera
     
     # Con IP específica:
-    python3 tools/deploy_wifi.py heladera 192.168.1.100
+    python3 tools/deploy_wifi.py gallinero 192.168.1.100
 
 Archivos base copiados (coherente con setup_webrepl.py):
     - boot.py, main.py, config.py, wifi.py, ntp.py, app_loader.py
 
-Proyectos (cuando se especifica):
-    - heladera/ → heladera/__init__.py, heladera/blink.py
+Apps (cuando se especifica, defaults a blink):
+    - blink/ → blink/__init__.py, blink/blink.py (default)
     - gallinero/ → gallinero/__init__.py, gallinero/app.py, etc.
+    - heladera/ → heladera/__init__.py, heladera/blink.py
 
 Requiere:
     pip install websocket-client python-dotenv
@@ -41,15 +42,15 @@ sys.path.insert(0, str(script_dir))
 from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
 
 
-def get_files_to_upload(project_dir, project_name=None):
+def get_files_to_upload(project_dir, app_name=None):
     """
     Obtiene lista de archivos a subir desde src/.
     Incluye todos los .py y templates si existen.
-    También incluye archivos del proyecto especificado (gallinero, heladera, etc.)
+    También incluye archivos de la app especificada (blink, gallinero, heladera, etc.)
     
     Args:
         project_dir: Directorio raíz del proyecto
-        project_name: Nombre del proyecto a incluir (gallinero, heladera, etc.)
+        app_name: Nombre de la app a incluir (blink, gallinero, heladera, etc.)
     
     Returns:
         list: Lista de tuplas (local_path, remote_name)
@@ -70,16 +71,16 @@ def get_files_to_upload(project_dir, project_name=None):
                 continue
             files.append((str(local_path), filename))
     
-    # Incluir archivos del proyecto especificado
-    if project_name:
-        project_dir_path = src_dir / project_name
-        if project_dir_path.exists() and project_dir_path.is_dir():
-            print(f"{BLUE}📦 Incluyendo archivos del proyecto: {project_name}{NC}")
+    # Incluir archivos de la app especificada
+    if app_name:
+        app_dir_path = src_dir / app_name
+        if app_dir_path.exists() and app_dir_path.is_dir():
+            print(f"{BLUE}📦 Incluyendo archivos de la app: {app_name}{NC}")
             
             # Primero subir __init__.py para que el directorio sea un paquete Python válido
-            init_file = project_dir_path / '__init__.py'
+            init_file = app_dir_path / '__init__.py'
             if init_file.exists():
-                remote_name = f"{project_name}/__init__.py"
+                remote_name = f"{app_name}/__init__.py"
                 is_valid, file_size, error_msg = validate_file_size(init_file)
                 if is_valid:
                     files.append((str(init_file), remote_name))
@@ -88,11 +89,11 @@ def get_files_to_upload(project_dir, project_name=None):
                     print(f"{RED}⚠️  __init__.py: {error_msg}{NC}")
             
             # Luego subir el resto de archivos
-            for py_file in project_dir_path.glob('*.py'):
+            for py_file in app_dir_path.glob('*.py'):
                 if py_file.name == '__init__.py':
                     continue  # Ya lo agregamos arriba
                 
-                remote_name = f"{project_name}/{py_file.name}"
+                remote_name = f"{app_name}/{py_file.name}"
                 is_valid, file_size, error_msg = validate_file_size(py_file)
                 if not is_valid:
                     print(f"{RED}⚠️  {py_file.name}: {error_msg}{NC}")
@@ -134,29 +135,29 @@ def verify_deploy(client):
 def main():
     print(f"{BLUE}🐔 Libre-Gallinero WebREPL Deploy{NC}\n")
     
-    # Detectar proyecto y IP desde argumentos
-    project_name = None
+    # Detectar app y IP desde argumentos
+    app_name = None
     ip_arg = None
     
     if len(sys.argv) > 1:
-        # El primer argumento puede ser IP o proyecto
+        # El primer argumento puede ser IP o app
         arg1 = sys.argv[1]
         # Si parece una IP (contiene puntos y números)
         if '.' in arg1 and any(c.isdigit() for c in arg1):
             ip_arg = arg1
             if len(sys.argv) > 2:
-                project_name = sys.argv[2]
+                app_name = sys.argv[2]
         else:
-            # Es un nombre de proyecto
-            project_name = arg1
+            # Es un nombre de app
+            app_name = arg1
             if len(sys.argv) > 2:
                 # El segundo argumento puede ser IP
                 arg2 = sys.argv[2]
                 if '.' in arg2 and any(c.isdigit() for c in arg2):
                     ip_arg = arg2
     
-    if project_name:
-        print(f"{BLUE}📦 Proyecto especificado: {project_name}{NC}\n")
+    if app_name:
+        print(f"{BLUE}📦 App especificada: {app_name}{NC}\n")
     if ip_arg:
         print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
     
@@ -191,10 +192,15 @@ def main():
     if not client.connect():
         sys.exit(1)
     
+    # Si no se especificó app, usar blink por defecto
+    if not app_name:
+        app_name = 'blink'
+        print(f"{BLUE}📦 Usando app por defecto: blink{NC}\n")
+    
     print(f"\n📤 Iniciando upload de archivos...\n")
     
-    # Obtener archivos a subir (incluyendo proyecto si se especificó)
-    files_to_upload = get_files_to_upload(project_dir, project_name=project_name)
+    # Obtener archivos a subir (incluyendo app si se especificó)
+    files_to_upload = get_files_to_upload(project_dir, app_name=app_name)
     
     if not files_to_upload:
         print(f"{RED}❌ No se encontraron archivos para subir en src/{NC}")

@@ -345,7 +345,7 @@ class TestUploadFiles:
             
             from tools.deploy_usb import upload_files
             
-            result = upload_files('/dev/ttyUSB0', project_root)
+            result = upload_files('/dev/ttyUSB0', project_root, app_name=None)
             
             # Verificar que se llamó subprocess.run para subir archivos
             assert mock_run.called
@@ -408,7 +408,7 @@ class TestUploadFiles:
             
             from tools.deploy_usb import upload_files
             
-            result = upload_files('/dev/ttyUSB0', project_root)
+            result = upload_files('/dev/ttyUSB0', project_root, app_name=None)
             captured = capsys.readouterr()
             
             # Puede retornar False si hay errores
@@ -422,7 +422,7 @@ class TestUploadFiles:
             
             from tools.deploy_usb import upload_files
             
-            result = upload_files('/dev/ttyUSB0', project_root)
+            result = upload_files('/dev/ttyUSB0', project_root, app_name=None)
             captured = capsys.readouterr()
             
             assert result is False

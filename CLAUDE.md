@@ -31,13 +31,14 @@ pytest tests/ -v
 python3 tools/setup_initial.py
 
 # Deploy via WiFi (preferred for development)
-python3 tools/deploy_wifi.py                 # Base modules only
+python3 tools/deploy_wifi.py                 # Base + blink app (default)
 python3 tools/deploy_wifi.py gallinero       # Base + gallinero app
 python3 tools/deploy_wifi.py heladera        # Base + heladera app
 python3 tools/deploy_wifi.py heladera 192.168.1.100  # Specify IP
 
 # Deploy via USB (faster for local development)
-python3 tools/deploy_usb.py
+python3 tools/deploy_usb.py                  # Base + blink app (default)
+python3 tools/deploy_usb.py gallinero        # Base + gallinero app
 ```
 
 ### Configuration
@@ -61,7 +62,7 @@ The ESP8266 boot sequence follows this flow:
    - Connects to WiFi (with WDT feed callbacks during long operations)
    - Starts WiFi monitor thread (if _thread available)
    - Syncs time via NTP
-   - Loads and runs the configured app (gallinero or heladera)
+   - Loads and runs the configured app (blink, gallinero, or heladera)
 
 ### Module System
 
@@ -73,14 +74,16 @@ The codebase is split into base modules and app-specific modules:
 - `ntp.py` - NTP time synchronization
 - `app_loader.py` - Dynamic app loader that imports the configured app
 
-**Apps** (deployed when specified):
+**Apps** (deployed when specified, defaults to blink):
+- `blink/` - Minimalist LED blink demo (default for initial setup)
+  - `blink.py` - Simple LED blink loop
 - `gallinero/` - Chicken coop automation (solar calculations, relay control)
   - `app.py` - Main control loop
   - `solar.py` - Sun time calculations
   - `logic.py` - Relay state logic
   - `hardware.py` - Hardware initialization
-- `heladera/` - Simple blink demo app
-  - `blink.py` - LED blink demo
+- `heladera/` - Reserved for future refrigerator app
+  - `blink.py` - Currently contains LED blink demo (will evolve)
 
 ### Configuration Architecture
 
@@ -89,7 +92,8 @@ Configuration is loaded in this priority order:
 2. `.env.example` file on ESP8266 (if exists)
 3. Hardcoded defaults in `config.py`
 
-The APP configuration variable determines which app module gets loaded by `app_loader.py`. Each app must expose a `run(cfg)` function.
+The APP configuration variable determines which app module gets loaded by `app_loader.py`.
+Each app must expose a `run(cfg)` function. Default is 'blink' for minimal setup.
 
 ### WiFi Management
 
@@ -154,7 +158,7 @@ The deployment system supports two modes:
 **WiFi Mode** (`deploy_wifi.py`):
 - Uses WebREPL protocol
 - Auto-discovers ESP8266 IP or accepts explicit IP
-- Can deploy base modules only or base + specific app
+- Deploys base modules + specific app (defaults to blink if no app specified)
 - Verifies deployment by importing main.py
 - Optional post-deploy reboot
 
@@ -175,6 +179,32 @@ The gallinero app uses latitude/longitude from .env to calculate:
 - Relay timing to simulate summer light patterns year-round
 
 Timezone is calculated from longitude (lon / 15).
+
+## App Architecture
+
+### Creating a New App
+
+All apps must follow this structure:
+
+```
+src/your_app/
+├── __init__.py          # Must export: from .main import run
+└── main.py (or any)     # Must have: def run(cfg): ...
+```
+
+**Requirements:**
+1. App directory in `src/`
+2. `__init__.py` that exports `run` function
+3. `run(cfg)` function that receives configuration dict
+4. App name added to `app_loader.py` conditional
+
+### Default Apps
+
+- **blink**: Minimal LED blink demo for initial setup/testing
+- **gallinero**: Production chicken coop automation
+- **heladera**: Reserved for future refrigerator automation
+
+Deploy with: `python3 tools/deploy_wifi.py <app_name>`
 
 ## Common Gotchas
 

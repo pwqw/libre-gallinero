@@ -26,7 +26,7 @@ class TestGetFilesToUpload:
     """Tests para la función get_files_to_upload()"""
     
     def test_get_files_to_upload_base_files_only(self, tmp_path):
-        """Test que obtiene solo archivos base cuando no se especifica proyecto"""
+        """Test que obtiene solo archivos base cuando no se especifica app"""
         # Crear estructura de directorios
         src_dir = tmp_path / 'src'
         src_dir.mkdir()
@@ -39,7 +39,7 @@ class TestGetFilesToUpload:
         (src_dir / 'ntp.py').write_text('# ntp')
         (src_dir / 'app_loader.py').write_text('# app_loader')
         
-        files = get_files_to_upload(tmp_path, project_name=None)
+        files = get_files_to_upload(tmp_path, app_name=None)
         
         # Verificar que se obtuvieron los 6 archivos base
         assert len(files) == 6
@@ -51,8 +51,8 @@ class TestGetFilesToUpload:
         assert 'ntp.py' in file_names
         assert 'app_loader.py' in file_names
     
-    def test_get_files_to_upload_with_project(self, tmp_path):
-        """Test que obtiene archivos base + archivos del proyecto"""
+    def test_get_files_to_upload_with_app(self, tmp_path):
+        """Test que obtiene archivos base + archivos de la app"""
         # Crear estructura
         src_dir = tmp_path / 'src'
         src_dir.mkdir()
@@ -61,16 +61,16 @@ class TestGetFilesToUpload:
         (src_dir / 'boot.py').write_text('# boot')
         (src_dir / 'main.py').write_text('# main')
         
-        # Proyecto
-        project_dir = src_dir / 'gallinero'
-        project_dir.mkdir()
-        (project_dir / '__init__.py').write_text('# init')
-        (project_dir / 'app.py').write_text('# app')
-        (project_dir / 'logic.py').write_text('# logic')
+        # App
+        app_dir = src_dir / 'gallinero'
+        app_dir.mkdir()
+        (app_dir / '__init__.py').write_text('# init')
+        (app_dir / 'app.py').write_text('# app')
+        (app_dir / 'logic.py').write_text('# logic')
         
-        files = get_files_to_upload(tmp_path, project_name='gallinero')
+        files = get_files_to_upload(tmp_path, app_name='gallinero')
         
-        # Verificar archivos base + proyecto
+        # Verificar archivos base + app
         assert len(files) >= 2  # Al menos boot.py y main.py
         file_names = [f[1] for f in files]
         
@@ -97,7 +97,7 @@ class TestGetFilesToUpload:
         (src_dir / 'main.py').write_text('# main')
         # No crear config.py, wifi.py, etc.
         
-        files = get_files_to_upload(tmp_path, project_name=None)
+        files = get_files_to_upload(tmp_path, app_name=None)
         
         # Solo debe haber 2 archivos
         assert len(files) == 2
@@ -114,7 +114,7 @@ class TestGetFilesToUpload:
         large_content = 'x' * (MAX_FILE_SIZE + 1)
         (src_dir / 'main.py').write_text(large_content)
         
-        files = get_files_to_upload(tmp_path, project_name=None)
+        files = get_files_to_upload(tmp_path, app_name=None)
         
         # Solo debe incluir boot.py
         assert len(files) == 1
@@ -126,8 +126,8 @@ class TestGetFilesToUpload:
         src_dir.mkdir()
         (src_dir / 'boot.py').write_text('# boot')
         
-        # Proyecto que no existe
-        files = get_files_to_upload(tmp_path, project_name='nonexistent')
+        # App que no existe
+        files = get_files_to_upload(tmp_path, app_name='nonexistent')
         
         # Solo archivos base
         assert len(files) == 1
@@ -142,7 +142,7 @@ class TestGetFilesToUpload:
         templates_dir.mkdir()
         (templates_dir / 'index.html').write_text('<html>')
         
-        files = get_files_to_upload(tmp_path, project_name=None)
+        files = get_files_to_upload(tmp_path, app_name=None)
         
         # Debe incluir el template
         file_names = [f[1] for f in files]
@@ -411,9 +411,9 @@ class TestMain:
     @patch('deploy_wifi.Path')
     @patch('os.chdir')
     @patch('builtins.input', return_value='n')
-    def test_main_with_project_name(self, mock_input, mock_chdir, mock_path_class, mock_subprocess,
+    def test_main_with_app_name(self, mock_input, mock_chdir, mock_path_class, mock_subprocess,
                                     mock_verify, mock_get_files, mock_client_class, mock_sleep, mock_validate):
-        """Test main() con nombre de proyecto especificado"""
+        """Test main() con nombre de app especificado"""
         # Setup
         mock_get_files.return_value = [('/path/to/file.py', 'file.py')]
         mock_client = Mock()
@@ -450,14 +450,72 @@ class TestMain:
         mock_path_class.side_effect = path_side_effect
         mock_path_class.return_value = mock_file_path
         
-        # Ejecutar con proyecto - agregar IP para evitar auto_discover
+        # Ejecutar con app - agregar IP para evitar auto_discover
         with patch('sys.argv', ['deploy_wifi.py', 'gallinero', '192.168.1.100']):
             main()
         
-        # Verificar que get_files_to_upload fue llamado con el proyecto
+        # Verificar que get_files_to_upload fue llamado con la app
         mock_get_files.assert_called_once()
         call_args = mock_get_files.call_args
-        assert call_args[1]['project_name'] == 'gallinero'
+        assert call_args[1]['app_name'] == 'gallinero'
+    
+    @pytest.mark.timeout(10)
+    @patch('deploy_wifi.time.sleep')
+    @patch('deploy_wifi.validate_file_size', return_value=(True, 100, None))
+    @patch('deploy_wifi.WebREPLClient')
+    @patch('deploy_wifi.get_files_to_upload')
+    @patch('deploy_wifi.verify_deploy')
+    @patch('deploy_wifi.subprocess.run')
+    @patch('deploy_wifi.Path')
+    @patch('os.chdir')
+    @patch('builtins.input', return_value='n')
+    def test_main_defaults_to_blink(self, mock_input, mock_chdir, mock_path_class, mock_subprocess,
+                                    mock_verify, mock_get_files, mock_client_class, mock_sleep, mock_validate):
+        """Test que main() usa blink como app por defecto"""
+        # Setup
+        mock_get_files.return_value = [('/path/to/file.py', 'file.py')]
+        mock_client = Mock()
+        mock_client.connect.return_value = True
+        mock_client.send_file.return_value = True
+        mock_client.ip = '192.168.1.100'  # Configurar IP para evitar auto_discover
+        mock_client.config = {}  # Config vacía
+        mock_client_class.return_value = mock_client
+        
+        # Mock Path para __file__, .git y .env
+        project_dir = Path('/project')
+        mock_file_path = Mock()
+        mock_file_path.parent.absolute.return_value.parent = project_dir
+        
+        def path_side_effect(path_arg):
+            # Si es __file__, devolver el mock_file_path
+            if hasattr(path_arg, '__file__') or (isinstance(path_arg, str) and '__file__' in str(path_arg)):
+                return mock_file_path
+            # Si es un string, crear un Path real para que pueda usar el operador /
+            if isinstance(path_arg, str):
+                path_obj = Path(path_arg)
+                # Si termina en .git o .env, devolver un Mock con exists
+                if path_obj.name == '.git' or path_obj.name == '.env':
+                    return Mock(exists=lambda: False)
+                return path_obj
+            # Si es un Path, devolverlo tal cual
+            if isinstance(path_arg, Path):
+                # Si termina en .git o .env, devolver un Mock con exists
+                if path_arg.name == '.git' or path_arg.name == '.env':
+                    return Mock(exists=lambda: False)
+                return path_arg
+            return Mock(exists=lambda: False)
+        
+        mock_path_class.side_effect = path_side_effect
+        mock_path_class.return_value = mock_file_path
+        
+        # Ejecutar sin app especificada - agregar IP para evitar auto_discover
+        with patch('sys.argv', ['deploy_wifi.py', '192.168.1.100']):
+            main()
+        
+        # Verificar que get_files_to_upload fue llamado con blink como default
+        mock_get_files.assert_called_once()
+        call_args = mock_get_files.call_args
+        assert call_args[1]['app_name'] == 'blink'
     
     @pytest.mark.timeout(10)
     @patch('deploy_wifi.time.sleep')
@@ -525,9 +583,9 @@ class TestMain:
     @patch('deploy_wifi.Path')
     @patch('os.chdir')
     @patch('builtins.input', return_value='n')
-    def test_main_with_project_and_ip(self, mock_input, mock_chdir, mock_path_class, mock_subprocess,
+    def test_main_with_app_and_ip(self, mock_input, mock_chdir, mock_path_class, mock_subprocess,
                                      mock_verify, mock_get_files, mock_client_class, mock_sleep, mock_validate):
-        """Test main() con proyecto e IP especificados"""
+        """Test main() con app e IP especificados"""
         # Setup
         mock_get_files.return_value = [('/path/to/file.py', 'file.py')]
         mock_client = Mock()
@@ -564,14 +622,14 @@ class TestMain:
         mock_path_class.side_effect = path_side_effect
         mock_path_class.return_value = mock_file_path
         
-        # Ejecutar con proyecto e IP
+        # Ejecutar con app e IP
         with patch('sys.argv', ['deploy_wifi.py', 'gallinero', '192.168.1.100']):
             main()
         
         # Verificar
         assert mock_client.ip == '192.168.1.100'
         call_args = mock_get_files.call_args
-        assert call_args[1]['project_name'] == 'gallinero'
+        assert call_args[1]['app_name'] == 'gallinero'
     
     @pytest.mark.timeout(10)
     @patch('deploy_wifi.time.sleep')
@@ -896,9 +954,9 @@ class TestMainEdgeCases:
     @patch('os.chdir')
     @patch('builtins.input', return_value='n')
     @patch('sys.exit')
-    def test_main_project_detection_first_arg(self, mock_exit, mock_input, mock_chdir, mock_path_class, mock_subprocess,
+    def test_main_app_detection_first_arg(self, mock_exit, mock_input, mock_chdir, mock_path_class, mock_subprocess,
                                               mock_get_files, mock_client_class, mock_sleep, mock_validate):
-        """Test que detecta proyecto cuando es el primer argumento"""
+        """Test que detecta app cuando es el primer argumento"""
         mock_client = Mock()
         mock_client.connect.return_value = False
         mock_client.execute.return_value = "OK"
@@ -933,8 +991,8 @@ class TestMainEdgeCases:
         with patch('sys.argv', ['deploy_wifi.py', 'heladera']):
             main()
         
-        # Verificar que get_files_to_upload fue llamado con el proyecto
+        # Verificar que get_files_to_upload fue llamado con la app
         if mock_get_files.called:
             call_args = mock_get_files.call_args
-            assert call_args[1]['project_name'] == 'heladera'
+            assert call_args[1]['app_name'] == 'heladera'
 

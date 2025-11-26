@@ -1,0 +1,168 @@
+import pytest
+from unittest.mock import Mock, patch, MagicMock
+import sys
+
+
+class TestBlinkApp:
+    """Tests para la app blink"""
+    
+    def test_blink_module_imports(self):
+        """Test que el módulo blink se puede importar"""
+        # Mock MicroPython modules
+        mock_machine = MagicMock()
+        mock_time = MagicMock()
+        mock_gc = MagicMock()
+        
+        with patch.dict('sys.modules', {
+            'machine': mock_machine,
+            'time': mock_time,
+            'gc': mock_gc
+        }):
+            from src.blink import blink
+            assert blink is not None
+    
+    def test_blink_run_accepts_config(self):
+        """Test que run(cfg) acepta configuración"""
+        # Mock MicroPython modules
+        mock_machine = MagicMock()
+        mock_pin = MagicMock()
+        mock_machine.Pin.return_value = mock_pin
+        mock_time = MagicMock()
+        mock_gc = MagicMock()
+        
+        with patch.dict('sys.modules', {
+            'machine': mock_machine,
+            'time': mock_time,
+            'gc': mock_gc
+        }):
+            from src.blink import blink
+            
+            cfg = {
+                'LED_PIN': 2,
+                'LED_DELAY': 0.5
+            }
+            
+            # Mock sys.print_exception para MicroPython compatibility
+            with patch('sys.print_exception', Mock()):
+                # run() entra en un loop infinito, así que lo interrumpimos
+                with patch('time.sleep', side_effect=KeyboardInterrupt()):
+                    try:
+                        blink.run(cfg)
+                    except KeyboardInterrupt:
+                        pass  # Esperado
+            
+            # Verificar que se creó el Pin
+            mock_machine.Pin.assert_called_once_with(2, mock_machine.Pin.OUT)
+    
+    def test_blink_run_uses_defaults(self):
+        """Test que run(cfg) usa valores por defecto"""
+        # Mock MicroPython modules
+        mock_machine = MagicMock()
+        mock_pin = MagicMock()
+        mock_machine.Pin.return_value = mock_pin
+        mock_time = MagicMock()
+        mock_gc = MagicMock()
+        
+        with patch.dict('sys.modules', {
+            'machine': mock_machine,
+            'time': mock_time,
+            'gc': mock_gc
+        }):
+            from src.blink import blink
+            
+            cfg = {}  # Config vacía, debe usar defaults
+            
+            # Mock sys.print_exception para MicroPython compatibility
+            with patch('sys.print_exception', Mock()):
+                # run() entra en un loop infinito, así que lo interrumpimos
+                with patch('time.sleep', side_effect=KeyboardInterrupt()):
+                    try:
+                        blink.run(cfg)
+                    except KeyboardInterrupt:
+                        pass  # Esperado
+            
+            # Verificar que se creó el Pin con valor por defecto (2)
+            mock_machine.Pin.assert_called_once_with(2, mock_machine.Pin.OUT)
+            # Verificar que sleep fue llamado con delay por defecto (0.5)
+            # time.sleep es llamado múltiples veces, pero al menos una vez con 0.5
+            sleep_calls = [call[0][0] for call in mock_time.sleep.call_args_list]
+            assert 0.5 in sleep_calls
+    
+    def test_blink_run_handles_exceptions(self, capsys):
+        """Test que run(cfg) maneja excepciones correctamente"""
+        # Mock MicroPython modules
+        mock_machine = MagicMock()
+        mock_machine.Pin.side_effect = Exception("Pin error")
+        mock_time = MagicMock()
+        mock_gc = MagicMock()
+        
+        with patch.dict('sys.modules', {
+            'machine': mock_machine,
+            'time': mock_time,
+            'gc': mock_gc
+        }):
+            from src.blink import blink
+            
+            cfg = {}
+            
+            # Mock sys.print_exception para MicroPython compatibility
+            mock_print_exception = Mock()
+            with patch('sys.print_exception', mock_print_exception):
+                blink.run(cfg)
+            
+            # Verificar que se imprimió el error
+            captured = capsys.readouterr()
+            assert '[blink] Error' in captured.out
+            # Verificar que se llamó sys.print_exception
+            mock_print_exception.assert_called_once()
+    
+    def test_blink_init_exports_run(self):
+        """Test que __init__.py exporta la función run"""
+        # Mock MicroPython modules para que blink.py se pueda importar
+        mock_machine = MagicMock()
+        mock_time = MagicMock()
+        mock_gc = MagicMock()
+        
+        with patch.dict('sys.modules', {
+            'machine': mock_machine,
+            'time': mock_time,
+            'gc': mock_gc
+        }):
+            from src.blink import run
+            assert callable(run)
+            assert run.__name__ == 'run'
+
+
+class TestBlinkAppIntegration:
+    """Tests de integración para la app blink"""
+    
+    def test_blink_app_loader_compatibility(self):
+        """Test que blink es compatible con app_loader"""
+        # Mock MicroPython modules
+        mock_machine = MagicMock()
+        mock_pin = MagicMock()
+        mock_machine.Pin.return_value = mock_pin
+        mock_time = MagicMock()
+        mock_gc = MagicMock()
+        
+        with patch.dict('sys.modules', {
+            'machine': mock_machine,
+            'time': mock_time,
+            'gc': mock_gc
+        }):
+            from src import app_loader
+            
+            cfg = {'APP': 'blink'}
+            
+            # Mock sys.print_exception para MicroPython compatibility
+            with patch('sys.print_exception', Mock()):
+                # load_app entra en un loop infinito, así que lo interrumpimos
+                with patch('time.sleep', side_effect=KeyboardInterrupt()):
+                    try:
+                        app_loader.load_app('blink', cfg)
+                    except KeyboardInterrupt:
+                        pass  # Esperado
+            
+            # Verificar que se importó blink
+            assert 'blink' in sys.modules
+
