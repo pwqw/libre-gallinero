@@ -449,9 +449,21 @@ class WebREPLClient:
                 content = f.read()
             
             logger.debug(f"Contenido leído: {len(content)} caracteres")
-            
-            content_escaped = content.replace('\\', '\\\\').replace("'", "\\'")
-            
+
+            # Mejorar escaping para manejar triple quotes y caracteres especiales
+            content_escaped = (content
+                .replace('\\', '\\\\')        # Backslashes primero
+                .replace("'''", "\\'\\'\\'")  # Triple quotes
+                .replace("'", "\\'"))         # Single quotes
+
+            # Verificar si el contenido tiene secuencias problemáticas
+            use_base64 = False
+            if "'''" in content or len(content_escaped) > len(content) * 1.5:
+                # Si hay triple quotes en el contenido original o el escaped creció mucho,
+                # usar base64 como método más seguro
+                use_base64 = True
+                logger.info(f"Usando base64 encoding para {remote_name} (contiene caracteres especiales)")
+
             # Crear directorios necesarios si el archivo está en una subcarpeta
             remote_path = Path(remote_name)
             dir_creation = ""
@@ -476,7 +488,20 @@ class WebREPLClient:
                     dir_lines.append(f"    print(f'📁 Directorio ya existe: {dir_path}')")
                 dir_creation = "\n".join(dir_lines) + "\n"
             
-            upload_code = f"""{dir_creation}import gc
+            if use_base64:
+                # Usar base64 encoding para archivos con contenido problemático
+                import base64
+                content_b64 = base64.b64encode(content.encode('utf-8')).decode('ascii')
+                upload_code = f"""{dir_creation}import gc
+gc.collect()
+import ubinascii
+with open('{remote_name}', 'wb') as f:
+    f.write(ubinascii.a2b_base64('{content_b64}'))
+print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
+"""
+            else:
+                # Usar método normal con escaping mejorado
+                upload_code = f"""{dir_creation}import gc
 gc.collect()
 with open('{remote_name}', 'w') as f:
     f.write('''{content_escaped}''')
@@ -573,14 +598,19 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                         response += data.decode('utf-8', errors='ignore')
                     else:
                         response += data
-                    
+
+                    # Exit on completion or error (early exit optimization)
                     if ">>>" in response:
                         break
+                    if any(err in response for err in ["Traceback", "Error:", "SyntaxError"]):
+                        logger.warning(f"Error detectado en respuesta: {response[:200]}")
+                        break  # Exit early on error
+
                 except websocket.WebSocketTimeoutException:
                     continue
                 except:
                     break
-            
+
             logger.debug(f"Respuesta recibida: {response[:100]}...")
             return response
         except Exception as e:

@@ -83,11 +83,31 @@ def send_file(ws, local_path, remote_name):
         with open(local_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Escapar contenido para Python
-        content_escaped = content.replace('\\', '\\\\').replace("'", "\\'")
+        # Mejorar escaping para manejar triple quotes y caracteres especiales
+        content_escaped = (content
+            .replace('\\', '\\\\')        # Backslashes primero
+            .replace("'''", "\\'\\'\\'")  # Triple quotes
+            .replace("'", "\\'"))         # Single quotes
+
+        # Verificar si el contenido tiene secuencias problemáticas
+        use_base64 = False
+        if "'''" in content or len(content_escaped) > len(content) * 1.5:
+            use_base64 = True
 
         # Código para escribir archivo en ESP8266
-        upload_code = f"""
+        if use_base64:
+            # Usar base64 encoding para archivos con contenido problemático
+            import base64
+            content_b64 = base64.b64encode(content.encode('utf-8')).decode('ascii')
+            upload_code = f"""
+import ubinascii
+with open('{remote_name}', 'wb') as f:
+    f.write(ubinascii.a2b_base64('{content_b64}'))
+print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
+"""
+        else:
+            # Usar método normal con escaping mejorado
+            upload_code = f"""
 with open('{remote_name}', 'w') as f:
     f.write('''{content_escaped}''')
 print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
