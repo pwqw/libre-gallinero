@@ -442,6 +442,19 @@ class WebREPLClient:
                 if "WebREPL connected" in response or ">>>" in response:
                     if self.verbose:
                         print(f"{GREEN}✅ Conectado a WebREPL{NC}")
+
+                    # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
+                    # Esto es necesario antes de usar el protocolo binario de file transfer
+                    if self.verbose:
+                        print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
+                    self.ws.send('\x03')  # CTRL-C
+                    time.sleep(0.3)
+                    # Limpiar buffer de respuesta
+                    try:
+                        self.ws.recv(timeout=0.5)
+                    except:
+                        pass
+
                     return True
                 else:
                     if self.verbose:
@@ -452,6 +465,18 @@ class WebREPLClient:
             except:
                 if self.verbose:
                     print(f"{GREEN}✅ Conectado a WebREPL{NC}")
+
+                # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
+                if self.verbose:
+                    print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
+                self.ws.send('\x03')  # CTRL-C
+                time.sleep(0.3)
+                # Limpiar buffer de respuesta
+                try:
+                    self.ws.recv(timeout=0.5)
+                except:
+                    pass
+
                 return True
         
         except ConnectionRefusedError:
