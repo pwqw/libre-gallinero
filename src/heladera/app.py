@@ -36,10 +36,17 @@ def is_night_time():
     """Check if current time is in night period (00:00-07:00)"""
     try:
         hour = time.localtime()[3]
-        # Night period: 00:00 (0) to 06:59 (6)
         return hour < NIGHT_END_HOUR
     except:
         return False
+
+def is_test_mode_on():
+    """TEST MODE: minutos pares ON, impares OFF"""
+    try:
+        minute = time.localtime()[4]
+        return minute % 2 == 0
+    except:
+        return True
 
 def run(cfg):
     log('=== Heladera App ===')
@@ -83,6 +90,22 @@ def run(cfg):
         while True:
             current_time = time.time()
             has_ntp = has_valid_time()
+
+            # TEST MODE: Minutos pares ON, impares OFF
+            if has_ntp:
+                test_on = is_test_mode_on()
+                if test_on != fridge_on:
+                    fridge_on = test_on
+                    if fridge_on:
+                        relay.off()  # NC: LOW = ON
+                        led.off()
+                        log('TEST: Minuto PAR - Heladera ON')
+                    else:
+                        relay.on()   # NC: HIGH = OFF
+                        led.on()
+                        log('TEST: Minuto IMPAR - Heladera OFF')
+                time.sleep(5)
+                continue
 
             # Modo degradado: sin NTP - ciclo continuo sin descanso
             if not has_ntp:
