@@ -16,14 +16,19 @@ import builtins
 # Guardar referencia al __import__ real antes de cualquier patch
 _real_import = builtins.__import__
 
-# Agregar pc al path para importar setup_webrepl
+# Agregar tools al path para importar funciones reales
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(script_dir)
-pc_path = os.path.join(project_dir, 'pc')
-if pc_path not in sys.path:
-    sys.path.insert(0, pc_path)
+tools_path = os.path.join(project_dir, 'tools')
+tools_common_path = os.path.join(project_dir, 'tools', 'common')
+if tools_path not in sys.path:
+    sys.path.insert(0, tools_path)
+if tools_common_path not in sys.path:
+    sys.path.insert(0, tools_common_path)
 
-from setup_webrepl import load_env, escape_env_value, run_ampy, main
+# Importar desde los módulos correctos
+from setup_initial import load_env, escape_env_value, main
+from ampy_utils import run_ampy
 
 
 class TestLoadEnv:
@@ -34,21 +39,17 @@ class TestLoadEnv:
         env_file = tmp_path / '.env'
         env_file.write_text('WIFI_SSID=TestNetwork\nWIFI_PASSWORD=TestPass123\nWEBREPL_PASSWORD=admin\n')
         
-        with patch('setup_webrepl.os.path.exists', return_value=True):
-            with patch('builtins.open', mock_open(read_data=env_file.read_text())):
-                # Necesitamos mockear el path del .env
-                with patch('setup_webrepl.os.path.join') as mock_join:
-                    mock_join.return_value = str(env_file)
-                    env = load_env()
+        # load_env ahora requiere project_dir como parámetro
+        env = load_env(tmp_path)
         
         assert env['WIFI_SSID'] == 'TestNetwork'
         assert env['WIFI_PASSWORD'] == 'TestPass123'
         assert env['WEBREPL_PASSWORD'] == 'admin'
     
-    def test_load_env_file_not_exists(self):
+    def test_load_env_file_not_exists(self, tmp_path):
         """Test cuando .env no existe"""
-        with patch('setup_webrepl.os.path.exists', return_value=False):
-            env = load_env()
+        # load_env ahora requiere project_dir como parámetro
+        env = load_env(tmp_path)
         assert env == {}
     
     def test_load_env_ignores_comments(self, tmp_path):
@@ -56,11 +57,8 @@ class TestLoadEnv:
         env_file = tmp_path / '.env'
         env_file.write_text('# This is a comment\nWIFI_SSID=TestNetwork\n# Another comment\n')
         
-        with patch('setup_webrepl.os.path.exists', return_value=True):
-            with patch('builtins.open', mock_open(read_data=env_file.read_text())):
-                with patch('setup_webrepl.os.path.join') as mock_join:
-                    mock_join.return_value = str(env_file)
-                    env = load_env()
+        # load_env ahora requiere project_dir como parámetro
+        env = load_env(tmp_path)
         
         assert 'WIFI_SSID' in env
         assert env['WIFI_SSID'] == 'TestNetwork'
@@ -70,11 +68,8 @@ class TestLoadEnv:
         env_file = tmp_path / '.env'
         env_file.write_text('WIFI_SSID="TestNetwork"\nWIFI_PASSWORD=\'TestPass123\'\n')
         
-        with patch('setup_webrepl.os.path.exists', return_value=True):
-            with patch('builtins.open', mock_open(read_data=env_file.read_text())):
-                with patch('setup_webrepl.os.path.join') as mock_join:
-                    mock_join.return_value = str(env_file)
-                    env = load_env()
+        # load_env ahora requiere project_dir como parámetro
+        env = load_env(tmp_path)
         
         assert env['WIFI_SSID'] == 'TestNetwork'
         assert env['WIFI_PASSWORD'] == 'TestPass123'
@@ -84,11 +79,8 @@ class TestLoadEnv:
         env_file = tmp_path / '.env'
         env_file.write_text('\nWIFI_SSID=TestNetwork\n\nWIFI_PASSWORD=TestPass\n\n')
         
-        with patch('setup_webrepl.os.path.exists', return_value=True):
-            with patch('builtins.open', mock_open(read_data=env_file.read_text())):
-                with patch('setup_webrepl.os.path.join') as mock_join:
-                    mock_join.return_value = str(env_file)
-                    env = load_env()
+        # load_env ahora requiere project_dir como parámetro
+        env = load_env(tmp_path)
         
         assert env['WIFI_SSID'] == 'TestNetwork'
         assert env['WIFI_PASSWORD'] == 'TestPass'
@@ -161,7 +153,7 @@ class TestEscapeEnvValue:
 class TestRunAmpy:
     """Tests para la función run_ampy()"""
     
-    @patch('setup_webrepl.subprocess.run')
+    @patch('ampy_utils.subprocess.run')
     def test_run_ampy_success(self, mock_run):
         """Test ejecución exitosa de ampy"""
         mock_run.return_value = Mock(returncode=0, stderr='')
@@ -171,7 +163,7 @@ class TestRunAmpy:
         mock_run.assert_called_once_with(['ampy', '--port', '/dev/ttyUSB0', 'put', 'file.py', 'file.py'],
                                         capture_output=True, text=True)
     
-    @patch('setup_webrepl.subprocess.run')
+    @patch('ampy_utils.subprocess.run')
     @patch('builtins.print')
     def test_run_ampy_failure(self, mock_print, mock_run):
         """Test cuando ampy falla"""
@@ -186,19 +178,18 @@ class TestMain:
     """Tests para la función main()"""
     
     @pytest.mark.timeout(10)
-    @patch('setup_webrepl.time.sleep')
+    @patch('setup_initial.time.sleep')
     @patch('subprocess.run')
     @patch('subprocess.check_call')
-    @patch('setup_webrepl.find_port')
+    @patch('setup_initial.find_port')
     @patch('builtins.input')
     @patch('builtins.open')
-    @patch('setup_webrepl.os.path.exists')
-    @patch('setup_webrepl.os.unlink')
-    @patch('setup_webrepl.tempfile.NamedTemporaryFile')
-    @patch('setup_webrepl.SerialMonitor')
-    @patch('setup_webrepl.validate_file_size')
+    @patch('setup_initial.os.path.exists')
+    @patch('setup_initial.os.unlink')
+    @patch('setup_initial.tempfile.NamedTemporaryFile')
+    @patch('setup_initial.SerialMonitor')
     @patch('builtins.__import__')
-    def test_main_success(self, mock_import, mock_validate, mock_serial, mock_tempfile, mock_unlink,
+    def test_main_success(self, mock_import, mock_serial, mock_tempfile, mock_unlink,
                           mock_exists, mock_file, mock_input, mock_find_port,
                           mock_check_call, mock_run, mock_sleep, tmp_path):
         """Test ejecución exitosa de main()"""
@@ -215,8 +206,8 @@ class TestMain:
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stderr = ''
+        mock_result.stdout = "PASS = 'admin'\n"  # Para verify_webrepl_config
         mock_run.return_value = mock_result
-        mock_validate.return_value = (True, 100, None)
         
         # Mock import ampy.cli - simular que ampy ya está instalado
         def import_side_effect(name, *args, **kwargs):
@@ -262,27 +253,27 @@ class TestMain:
             (tmp_path / 'src' / 'app_loader.py').write_text('# app_loader.py')
             
             # Mock load_env para retornar dict vacío inicialmente
-            with patch('setup_webrepl.load_env', return_value={}):
-                with patch('setup_webrepl.sys.exit'):
+            with patch('setup_initial.load_env', return_value={}):
+                with patch('setup_initial.sys.exit'):
                     with patch('builtins.print'):  # Suprimir prints
                         # Reconfigurar mocks dentro del contexto para asegurar que funcionen
                         # Esto es necesario porque los patches anidados pueden interferir
                         with patch('builtins.input', side_effect=['TestNetwork', 'TestPass123', 'n', 'admin', '']):
-                            # Parchear subprocess.run dentro del módulo setup_webrepl
-                            with patch('setup_webrepl.subprocess.run', mock_run):
+                            # Parchear subprocess.run dentro del módulo setup_initial
+                            with patch('setup_initial.subprocess.run', mock_run):
                                 # Asegurar que SerialMonitor esté mockeado dentro del contexto
-                                with patch('setup_webrepl.SerialMonitor', mock_serial):
+                                with patch('setup_initial.SerialMonitor', mock_serial):
                                     main()
         
         # Verificar que se llamó ampy varias veces
         assert mock_run.call_count >= 5  # webrepl_cfg, boot.py, módulos, .env
     
     @pytest.mark.timeout(10)
-    @patch('setup_webrepl.time.sleep')
-    @patch('setup_webrepl.subprocess.run')
-    @patch('setup_webrepl.find_port')
+    @patch('setup_initial.time.sleep')
+    @patch('setup_initial.subprocess.run')
+    @patch('setup_initial.find_port')
     @patch('builtins.input')
-    @patch('setup_webrepl.sys.exit')
+    @patch('setup_initial.sys.exit')
     @patch('builtins.__import__')
     def test_main_no_port(self, mock_import, mock_exit, mock_input, mock_find_port, mock_run, mock_sleep):
         """Test cuando no se encuentra puerto"""
@@ -312,17 +303,16 @@ class TestMain:
                     assert exc_info.value.code == 1
     
     @pytest.mark.timeout(10)
-    @patch('setup_webrepl.time.sleep')
-    @patch('setup_webrepl.subprocess.run')
-    @patch('setup_webrepl.find_port')
+    @patch('setup_initial.time.sleep')
+    @patch('setup_initial.subprocess.run')
+    @patch('setup_initial.find_port')
     @patch('builtins.input')
-    @patch('setup_webrepl.sys.exit')
+    @patch('setup_initial.sys.exit')
     @patch('builtins.__import__')
     def test_main_no_wifi_ssid(self, mock_import, mock_exit, mock_input, mock_find_port, mock_run, mock_sleep):
         """Test cuando no se proporciona WiFi SSID"""
         mock_find_port.return_value = '/dev/ttyUSB0'
         mock_input.side_effect = ['', '']  # No SSID, no password
-        mock_run.return_value = Mock(returncode=0, stderr='')
         # Hacer que sys.exit lance SystemExit pero también registre la llamada
         def exit_side_effect(code):
             # Llamar al mock primero para registrar la llamada
@@ -336,27 +326,30 @@ class TestMain:
             return _real_import(name, *args, **kwargs)
         mock_import.side_effect = import_side_effect
         
-        with patch('setup_webrepl.load_env', return_value={}):
-            with patch('builtins.print'):  # Suprimir prints
-                # Asegurar que input esté mockeado dentro de setup_webrepl
-                with patch('builtins.input', mock_input):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
-                    # Verificar que se lanzó SystemExit con código 1
-                    assert exc_info.value.code == 1
+        with patch('builtins.print'):  # Suprimir prints
+            # Asegurar que input esté mockeado dentro de setup_initial
+            with patch('builtins.input', mock_input):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+                # Verificar que se lanzó SystemExit con código 1
+                assert exc_info.value.code == 1
     
     @pytest.mark.timeout(10)
-    @patch('setup_webrepl.time.sleep')
-    @patch('setup_webrepl.subprocess.run')
-    @patch('setup_webrepl.find_port')
+    @patch('setup_initial.time.sleep')
+    @patch('setup_initial.subprocess.run')
+    @patch('setup_initial.find_port')
     @patch('builtins.input')
-    @patch('setup_webrepl.sys.exit')
+    @patch('setup_initial.sys.exit')
     @patch('builtins.__import__')
     def test_main_no_wifi_password(self, mock_import, mock_exit, mock_input, mock_find_port, mock_run, mock_sleep):
         """Test cuando no se proporciona WiFi password"""
         mock_find_port.return_value = '/dev/ttyUSB0'
         mock_input.side_effect = ['TestNetwork', '']  # SSID pero no password
-        mock_run.return_value = Mock(returncode=0, stderr='')
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stderr = ''
+        mock_result.stdout = "PASS = 'admin'\n"
+        mock_run.return_value = mock_result
         # Hacer que sys.exit lance SystemExit pero también registre la llamada
         def exit_side_effect(code):
             # Registrar la llamada manualmente
@@ -370,16 +363,15 @@ class TestMain:
             return _real_import(name, *args, **kwargs)
         mock_import.side_effect = import_side_effect
         
-        with patch('setup_webrepl.load_env', return_value={}):
-            with patch('builtins.print'):  # Suprimir prints
-                # Asegurar que input esté mockeado dentro de setup_webrepl
-                with patch('builtins.input', mock_input):
-                    # Asegurar que subprocess.run esté mockeado dentro de setup_webrepl
-                    with patch('setup_webrepl.subprocess.run', mock_run):
-                        with pytest.raises(SystemExit) as exc_info:
-                            main()
-                        # Verificar que se lanzó SystemExit con código 1
-                        assert exc_info.value.code == 1
+        with patch('builtins.print'):  # Suprimir prints
+            # Asegurar que input esté mockeado dentro de setup_initial
+            with patch('builtins.input', mock_input):
+                # Asegurar que subprocess.run esté mockeado dentro de setup_initial
+                with patch('setup_initial.subprocess.run', mock_run):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+                    # Verificar que se lanzó SystemExit con código 1
+                    assert exc_info.value.code == 1
     
     @pytest.mark.timeout(10)
     @pytest.mark.skip(reason="Test complejo - requiere muchos mocks anidados")
@@ -398,23 +390,19 @@ class TestMain:
         pass
     
     @pytest.mark.timeout(10)
-    @patch('setup_webrepl.time.sleep')
-    @patch('setup_webrepl.subprocess.run')
-    @patch('setup_webrepl.find_port')
+    @patch('setup_initial.time.sleep')
+    @patch('setup_initial.subprocess.run')
+    @patch('setup_initial.find_port')
     @patch('builtins.input')
-    @patch('setup_webrepl.load_env')
     @patch('builtins.__import__')
-    def test_main_uses_env_variables(self, mock_import, mock_load_env, mock_input, mock_find_port, mock_run, mock_sleep):
+    def test_main_uses_env_variables(self, mock_import, mock_input, mock_find_port, mock_run, mock_sleep):
         """Test que usa variables de entorno cuando están disponibles"""
         mock_find_port.return_value = '/dev/ttyUSB0'
-        mock_load_env.return_value = {
-            'WIFI_SSID': 'EnvNetwork',
-            'WIFI_PASSWORD': 'EnvPass123',
-            'WIFI_HIDDEN': 'false',
-            'WEBREPL_PASSWORD': 'envadmin',
-            'SERIAL_PORT': '/dev/ttyUSB0'
-        }
-        mock_run.return_value = Mock(returncode=0, stderr='')
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stderr = ''
+        mock_result.stdout = "PASS = 'envadmin'\n"
+        mock_run.return_value = mock_result
         def import_side_effect(name, *args, **kwargs):
             if name == 'ampy.cli':
                 return MagicMock()
@@ -424,19 +412,18 @@ class TestMain:
         # No debería pedir input si todo está en env
         mock_input.return_value = ''  # Solo para Enter final
         
-        with patch('setup_webrepl.os.path.exists', return_value=True):
-            with patch('setup_webrepl.validate_file_size', return_value=(True, 100, None)):
-                with patch('setup_webrepl.tempfile.NamedTemporaryFile'):
-                    with patch('setup_webrepl.sys.exit'):
-                        with patch('builtins.print'):  # Suprimir prints
-                            with patch('setup_webrepl.SerialMonitor'):
-                                # Mock open para que sea iterable
-                                with patch('builtins.open', mock_open(read_data='WIFI_SSID=EnvNetwork\nWIFI_PASSWORD=EnvPass123\n')):
-                                    # Asegurar que subprocess.run esté mockeado dentro de setup_webrepl
-                                    with patch('setup_webrepl.subprocess.run', mock_run):
-                                        # Asegurar que input esté mockeado dentro de setup_webrepl
-                                        with patch('builtins.input', mock_input):
-                                            main()
+        with patch('setup_initial.os.path.exists', return_value=True):
+            with patch('setup_initial.tempfile.NamedTemporaryFile'):
+                with patch('setup_initial.sys.exit'):
+                    with patch('builtins.print'):  # Suprimir prints
+                        with patch('setup_initial.SerialMonitor'):
+                            # Mock open para que sea iterable
+                            with patch('builtins.open', mock_open(read_data='WIFI_SSID=EnvNetwork\nWIFI_PASSWORD=EnvPass123\nWEBREPL_PASSWORD=envadmin\nSERIAL_PORT=/dev/ttyUSB0\n')):
+                                # Asegurar que subprocess.run esté mockeado dentro de setup_initial
+                                with patch('setup_initial.subprocess.run', mock_run):
+                                    # Asegurar que input esté mockeado dentro de setup_initial
+                                    with patch('builtins.input', mock_input):
+                                        main()
         
         # Verificar que se usaron valores del env
         # (no podemos verificar directamente, pero sabemos que no pidió input para SSID/password)
@@ -445,9 +432,9 @@ class TestMain:
         pass  # Test pasa si no hay excepciones
     
     @pytest.mark.timeout(10)
-    @patch('setup_webrepl.time.sleep')
-    @patch('setup_webrepl.subprocess.run')
-    @patch('setup_webrepl.find_port')
+    @patch('setup_initial.time.sleep')
+    @patch('setup_initial.subprocess.run')
+    @patch('setup_initial.find_port')
     @patch('builtins.input')
     @patch('builtins.__import__')
     def test_main_wifi_hidden_parsing(self, mock_import, mock_input, mock_find_port, mock_run, mock_sleep):
@@ -455,7 +442,11 @@ class TestMain:
         mock_find_port.return_value = '/dev/ttyUSB0'
         # Incluir el input final para "Presiona Enter"
         mock_input.side_effect = ['TestNetwork', 'TestPass123', 's', 'admin', '']
-        mock_run.return_value = Mock(returncode=0, stderr='')
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stderr = ''
+        mock_result.stdout = "PASS = 'admin'\n"
+        mock_run.return_value = mock_result
         def import_side_effect(name, *args, **kwargs):
             if name == 'ampy.cli':
                 return MagicMock()
@@ -463,20 +454,18 @@ class TestMain:
         mock_import.side_effect = import_side_effect
         
         mock_file_patcher = mock_open(read_data='WIFI_SSID=TestNetwork\nWIFI_PASSWORD=TestPass123\n')
-        with patch('setup_webrepl.load_env', return_value={}):
-            with patch('setup_webrepl.os.path.exists', return_value=True):
-                with patch('setup_webrepl.validate_file_size', return_value=(True, 100, None)):
-                    with patch('setup_webrepl.tempfile.NamedTemporaryFile'):
-                        with patch('setup_webrepl.sys.exit'):
-                            with patch('builtins.print'):  # Suprimir prints
-                                with patch('setup_webrepl.SerialMonitor'):
-                                    # Mock open para que sea iterable
-                                    with patch('builtins.open', mock_file_patcher) as mock_file:
-                                        # Asegurar que subprocess.run esté mockeado dentro de setup_webrepl
-                                        with patch('setup_webrepl.subprocess.run', mock_run):
-                                            # Asegurar que input esté mockeado dentro de setup_webrepl
-                                            with patch('builtins.input', mock_input):
-                                                main()
+        with patch('setup_initial.os.path.exists', return_value=True):
+            with patch('setup_initial.tempfile.NamedTemporaryFile'):
+                with patch('setup_initial.sys.exit'):
+                    with patch('builtins.print'):  # Suprimir prints
+                        with patch('setup_initial.SerialMonitor'):
+                            # Mock open para que sea iterable
+                            with patch('builtins.open', mock_file_patcher) as mock_file:
+                                # Asegurar que subprocess.run esté mockeado dentro de setup_initial
+                                with patch('setup_initial.subprocess.run', mock_run):
+                                    # Asegurar que input esté mockeado dentro de setup_initial
+                                    with patch('builtins.input', mock_input):
+                                        main()
         
         # Verificar que se escribió 'true' en el .env
         # (verificamos que se llamó open con modo 'w')
@@ -494,12 +483,8 @@ class TestIntegration:
         env_file = tmp_path / '.env'
         env_file.write_text(env_content)
         
-        # Cargar
-        with patch('setup_webrepl.os.path.exists', return_value=True):
-            with patch('builtins.open', mock_open(read_data=env_content)):
-                with patch('setup_webrepl.os.path.join') as mock_join:
-                    mock_join.return_value = str(env_file)
-                    env = load_env()
+        # Cargar - load_env ahora requiere project_dir como parámetro
+        env = load_env(tmp_path)
         
         # Verificar que se cargaron correctamente
         assert env['WIFI_SSID'] == 'Test Network'
