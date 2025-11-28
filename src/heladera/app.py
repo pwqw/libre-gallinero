@@ -1,45 +1,21 @@
 # Heladera App - Refrigerator automation with timed cycles
-#
-# Controla heladera con ciclo de 30 min ON/OFF durante el día
-# Descanso nocturno: 00:00-07:00 (sin ruido)
-# LED integrado indica estado
-#
-#  +---------------------------------------------------+
-#  |                                                   |
-#  |   NodeMCU ESP-12E (ESP8266)                       |
-#  |                                                   |
-#  |  [ ] = Pin usado                                  |
-#  |                                                   |
-#  |         [D1] (GPIO5)  <--- Relay IN (NC)          |
-#  |         [D2] (GPIO2)  <--- LED integrado          |
-#  |                                                   |
-#  |         [GND] --------+--- Relay GND              |
-#  |         [VIN] (5V) ------- Relay VCC              |
-#  |                                                   |
-#  +---------------------------------------------------+
-#  Pines usados:
-#    D1 (GPIO5)  -> Relay IN (Normally Closed)
-#    D2 (GPIO2)  -> LED integrado (status indicator)
-#    GND         -> Relay GND
-#    VIN (5V)    -> Relay VCC
+# D1 (GPIO5) -> Relay IN (NC), D2 (GPIO2) -> LED, GND -> Relay GND, VIN (5V) -> Relay VCC
 import sys
 
 try:
     import machine
     import time
     import gc
+    from . import state as state_module
 except ImportError:
     print("[heladera/app] ERROR: Módulos MicroPython no encontrados")
 
-# Hardware pins
-RELAY_PIN = 5   # D1 - Relay control (NC)
-LED_PIN = 2     # D2 - Built-in LED
-
-# Timing constants
-CYCLE_DURATION = 30 * 60  # 30 minutos en segundos
-NIGHT_START_HOUR = 0      # 00:00
-NIGHT_END_HOUR = 7        # 07:00
-LED_BLINK_INTERVAL = 0.5  # Parpadeo cuando no hay NTP
+RELAY_PIN = 5
+LED_PIN = 2
+CYCLE_DURATION = 30 * 60
+NIGHT_START_HOUR = 0
+NIGHT_END_HOUR = 7
+LED_BLINK_INTERVAL = 0.5
 
 def log(msg):
     """Log with module prefix"""
@@ -51,66 +27,56 @@ def log(msg):
         pass
 
 def has_valid_time():
-    """
-    Verifica si tenemos una hora válida desde NTP.
-    MicroPython inicializa con (2000, 1, 1, 0, 0, 0, 5, 1)
-    """
     try:
-        tm = time.localtime()
-        # Si el año es > 2020, asumimos que NTP funcionó
-        return tm[0] > 2020
-    except Exception as e:
-        log(f'Error verificando hora: {e}')
+        return time.localtime()[0] > 2020
+    except:
         return False
 
 def is_night_time():
-    """
-    Verifica si estamos en horario de descanso nocturno (00:00-07:00)
-    Retorna True si es de noche, False si es de día
-    """
     try:
-        tm = time.localtime()
-        hour = tm[3]
-        # Noche: 00:00-07:00
+        hour = time.localtime()[3]
         return hour >= NIGHT_START_HOUR and hour < NIGHT_END_HOUR
-    except Exception as e:
-        log(f'Error verificando hora nocturna: {e}')
+    except:
         return False
 
 def run(cfg):
-    """
-    Función principal de la app heladera.
-
-    Lógica:
-    - Con NTP: ciclo 30min ON/OFF de 07:00-00:00, descanso 00:00-07:00
-    - Sin NTP: LED parpadea cada 0.5s, ciclo 30min ON/OFF continuo (sin descanso)
-    - LED encendido = app OK, heladera en OFF
-    - LED apagado = relé activado, heladera ON
-    """
     log('=== Heladera App ===')
     gc.collect()
 
     try:
-        # Inicializar hardware
         relay = machine.Pin(RELAY_PIN, machine.Pin.OUT)
         led = machine.Pin(LED_PIN, machine.Pin.OUT)
-
-        # Relé NC: LOW = heladera ON, HIGH = heladera OFF
-        relay.off()  # Iniciar con heladera ON
-        led.on()     # LED encendido = app OK
-
-        log('Hardware inicializado')
-        log(f'Relay: GPIO{RELAY_PIN} (NC)')
-        log(f'LED: GPIO{LED_PIN}')
+        relay.off()
+        led.on()
+        log('Hardware OK')
         gc.collect()
 
-        # Estado del ciclo
-        fridge_on = True
-        cycle_start = time.time()
+        persistent_state = state_module.load_state()
+        log(f"Boot #{persistent_state['boot_count']}")
+
+        for _ in range(3):
+            led.off()
+            time.sleep(0.1)
+            led.on()
+            time.sleep(0.1)
+
+        has_ntp = has_valid_time()
+        fridge_on, cycle_elapsed = state_module.recover_state_after_boot(persistent_state, has_ntp)
+
+        if fridge_on:
+            relay.off()
+            led.off()
+        else:
+            relay.on()
+            led.on()
+        log(f"Estado: {'ON' if fridge_on else 'OFF'}")
+
+        cycle_start = time.time() - cycle_elapsed
+        last_checkpoint_time = time.time()
+        CHECKPOINT_INTERVAL = 10 * 60
         last_blink = time.time()
         led_state = True
-
-        log('Loop principal iniciado')
+        log('Loop OK')
 
         while True:
             current_time = time.time()
@@ -139,7 +105,17 @@ def run(cfg):
                         relay.on()   # NC: HIGH = OFF
                         log('Sin NTP - Ciclo: Heladera OFF (30 min)')
 
+                    # Guardar estado en cambio de ciclo
+                    persistent_state['fridge_on'] = fridge_on
+                    persistent_state['cycle_elapsed_seconds'] = 0
+                    persistent_state['last_save_timestamp'] = current_time
+                    if state_module.save_state(persistent_state):
+                        log('Estado guardado ✓')
+                    else:
+                        log('⚠ Fallo al guardar estado')
+
                     cycle_start = current_time
+                    last_checkpoint_time = current_time
                     gc.collect()
 
                 time.sleep(0.1)
@@ -173,7 +149,37 @@ def run(cfg):
                     led.on()     # LED encendido = heladera apagada
                     log('Ciclo: Heladera OFF (30 min)')
 
+                # Guardar estado en cambio de ciclo
+                persistent_state['fridge_on'] = fridge_on
+                persistent_state['cycle_elapsed_seconds'] = 0
+                persistent_state['last_save_timestamp'] = current_time
+                if has_ntp:
+                    persistent_state['last_ntp_timestamp'] = current_time
+
+                if state_module.save_state(persistent_state):
+                    log('Estado guardado ✓')
+                else:
+                    log('⚠ Fallo al guardar estado')
+
                 cycle_start = current_time
+                last_checkpoint_time = current_time
+                gc.collect()
+
+            # Checkpoint cada 10 minutos
+            if current_time - last_checkpoint_time >= CHECKPOINT_INTERVAL:
+                elapsed = current_time - cycle_start
+                persistent_state['cycle_elapsed_seconds'] = elapsed
+                persistent_state['last_save_timestamp'] = current_time
+                persistent_state['total_runtime_seconds'] += CHECKPOINT_INTERVAL
+
+                if has_ntp:
+                    persistent_state['last_ntp_timestamp'] = current_time
+
+                state_module.save_state(persistent_state)
+                last_checkpoint_time = current_time
+
+                runtime_hours = persistent_state['total_runtime_seconds'] / 3600
+                log(f'Checkpoint: {runtime_hours:.1f}h runtime')
                 gc.collect()
 
             # Esperar un poco antes del siguiente check
@@ -181,6 +187,19 @@ def run(cfg):
 
     except KeyboardInterrupt:
         log('Interrumpido por usuario')
+
+        # Guardar estado antes de salir
+        try:
+            elapsed = time.time() - cycle_start
+            persistent_state['cycle_elapsed_seconds'] = elapsed
+            persistent_state['last_save_timestamp'] = time.time()
+            if has_valid_time():
+                persistent_state['last_ntp_timestamp'] = time.time()
+            state_module.save_state(persistent_state)
+            log('Estado guardado antes de salir ✓')
+        except:
+            pass
+
         # Apagar heladera y LED al salir
         try:
             relay.on()

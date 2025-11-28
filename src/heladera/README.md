@@ -17,6 +17,7 @@ La app **heladera** controla una heladera mediante un relé normalmente cerrado 
 
 | Estado LED | Significado |
 |------------|-------------|
+| 3 parpadeos rápidos al boot | Cargando estado desde flash |
 | Encendido fijo | App funcional, heladera en ciclo normal |
 | Apagado (durante ciclo) | Relé activado (heladera encendida) |
 | Parpadeo 0.5s | Sin NTP (sin WiFi o sin Internet) - modo degradado |
@@ -24,13 +25,68 @@ La app **heladera** controla una heladera mediante un relé normalmente cerrado 
 ## Hardware
 
 ```
-NodeMCU ESP-12E (ESP8266)
+ +---------------------------------------------------+
+ |                                                   |
+ |   NodeMCU ESP-12E (ESP8266)                       |
+ |                                                   |
+ |  [ ] = Pin usado                                  |
+ |                                                   |
+ |         [D1] (GPIO5)  <--- Relay IN (NC)          |
+ |         [D2] (GPIO2)  <--- LED integrado          |
+ |                                                   |
+ |         [GND] --------+--- Relay GND              |
+ |         [VIN] (5V) ------- Relay VCC              |
+ |                                                   |
+ +---------------------------------------------------+
 
-[D1] (GPIO5)  -> Relay IN (Normally Closed)
-[GND]         -> Relay GND
-[VIN] (5V)    -> Relay VCC
-[LED] (GPIO2) -> LED integrado (indicador de estado)
+Pines usados:
+  D1 (GPIO5)  -> Relay IN (Normally Closed)
+  D2 (GPIO2)  -> LED integrado (status indicator)
+  GND         -> Relay GND
+  VIN (5V)    -> Relay VCC
 ```
+
+## Arquitectura de Persistencia
+
+La app mantiene el estado de los ciclos a través de reinicios y cortes de luz usando un archivo JSON en flash:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Heladera App                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Boot → load_state() → recover_state_after_boot()          │
+│           │               │                                 │
+│           │               ├─ Sin NTP: 15 min ON inicial    │
+│           │               └─ Con NTP: calcular estado      │
+│           │                                                 │
+│  Loop → ciclo 30/30 min                                     │
+│           │                                                 │
+│           ├─ Cambio ciclo → save_state() inmediato         │
+│           └─ Cada 10 min → save_state() checkpoint         │
+│                                                             │
+│  Shutdown → save_state() final                             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+                    ┌──────────────┐
+                    │ /state.json  │  (Flash persistente)
+                    └──────────────┘
+```
+
+**Archivo de estado** (`/state.json`):
+- `last_ntp_timestamp`: Último timestamp NTP conocido
+- `last_save_timestamp`: Cuándo se guardó el estado
+- `fridge_on`: Estado del relé (true=ON, false=OFF)
+- `cycle_elapsed_seconds`: Tiempo transcurrido en ciclo actual
+- `total_runtime_seconds`: Tiempo total de operación
+- `boot_count`: Contador de reinicios
+
+**Estrategia de recuperación**:
+- **Sin NTP**: Arranca con 15 min ON (conservador) para promediar incertidumbre, luego continúa con ciclos 30/30 normales
+- **Con NTP**: Calcula cuánto tiempo pasó desde último guardado y recupera el estado esperado del ciclo
+- **Corte largo (>2h)**: Resetea ciclo por deriva del reloj interno
+- **Checkpoints**: Guarda estado cada 10 min + en cada cambio de ciclo
 
 ## Lógica de Control
 
