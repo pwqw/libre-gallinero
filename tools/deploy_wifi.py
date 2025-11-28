@@ -203,7 +203,23 @@ def main():
 
     if not client.connect():
         sys.exit(1)
-    
+
+    # Interrumpir programa actual con Ctrl-C para liberar el REPL
+    print(f"{BLUE}⏸️  Deteniendo programa actual en ESP8266...{NC}")
+    try:
+        client.execute("\x03", timeout=1)  # Ctrl-C
+        time.sleep(0.5)
+        # Limpiar buffer
+        try:
+            client.ws.settimeout(0.2)
+            while True:
+                client.ws.recv()
+        except:
+            pass
+        print(f"{GREEN}✅ Programa detenido{NC}\n")
+    except Exception as e:
+        print(f"{YELLOW}⚠️  No se pudo detener programa (puede continuar de todas formas){NC}\n")
+
     # Si no se especificó app, usar blink por defecto
     if not app_name:
         app_name = 'blink'
@@ -274,29 +290,35 @@ def main():
     
     # Preguntar si reiniciar
     print(f"{YELLOW}🔄 ¿Reiniciar ESP8266 para aplicar cambios? (s/N){NC}")
+    print(f"{YELLOW}   ⚠️  NOTA: Si reinicias, el programa se ejecutará automáticamente{NC}")
+    print(f"{YELLOW}   y bloqueará WebREPL hasta que presiones Ctrl-C manualmente{NC}")
     try:
         reply = input().strip().lower()
     except (EOFError, KeyboardInterrupt):
         reply = 'n'
-    
+
     if reply in ['s', 'S']:
         print(f"\n🔄 Reiniciando ESP8266...")
-        
+
         # Reconectar para reiniciar
         client = WebREPLClient(project_dir=project_dir, verbose=False, auto_discover=False)
-        client.ip = client.config.get('WEBREPL_IP') or client.ip
+        client.ip = ip_arg or cached_ip_pre or client.config.get('WEBREPL_IP')
         if client.connect():
             client.execute("\x03", timeout=0.5)  # Ctrl-C to reset REPL state
             client.execute("import machine; machine.reset()", timeout=1)
             time.sleep(0.5)
             client.close()
-            print(f"{GREEN}✅ Deploy completo - ESP8266 reiniciado{NC}\n")
+            print(f"{GREEN}✅ Deploy completo - ESP8266 reiniciado{NC}")
+            print(f"{YELLOW}⚠️  El programa se está ejecutando ahora{NC}")
+            print(f"{YELLOW}   Para detenerlo y recuperar REPL, usa el shortcut 'Abrir REPL'{NC}")
+            print(f"{YELLOW}   y presiona Ctrl-C{NC}\n")
         else:
             print(f"{RED}❌ No se pudo conectar para reiniciar{NC}\n")
     else:
-        print(f"{GREEN}✅ Deploy completo{NC}")
-        print("   Para aplicar cambios desde WebREPL web:")
-        print("   import machine; machine.reset()\n")
+        print(f"{GREEN}✅ Deploy completo (sin reiniciar){NC}")
+        print(f"{BLUE}💡 Recomendación:{NC}")
+        print(f"   • Para probar: Usa 'Abrir REPL' → import machine; machine.reset()")
+        print(f"   • O simplemente desconecta y vuelve a conectar el ESP8266\n")
 
 
 if __name__ == '__main__':

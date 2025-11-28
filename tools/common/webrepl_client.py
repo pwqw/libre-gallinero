@@ -435,20 +435,6 @@ class WebREPLClient:
             logger.error("No hay conexión WebREPL activa")
             return False
 
-        # Limpiar el estado del REPL antes de enviar (Ctrl-C para cancelar cualquier comando pendiente)
-        try:
-            self.ws.send('\x03')  # Ctrl-C
-            time.sleep(0.2)
-            # Limpiar buffer
-            try:
-                self.ws.settimeout(0.1)
-                while True:
-                    self.ws.recv()
-            except:
-                pass
-        except:
-            pass
-        
         local_path = Path(local_path)
         if not local_path.exists():
             if self.verbose:
