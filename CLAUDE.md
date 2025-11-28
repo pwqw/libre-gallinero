@@ -252,9 +252,58 @@ src/your_app/
 
 Deploy with: `python3 tools/deploy_wifi.py <app_name>`
 
+## WebREPL Protocol Details (MicroPython 1.19)
+
+### Binary File Transfer Protocol
+
+El protocolo WebREPL usa mensajes WebSocket binarios para transferir archivos. Implementación basada en:
+- Código oficial: [webrepl_cli.py](https://github.com/micropython/webrepl/blob/master/webrepl_cli.py)
+- Servidor C: [modwebrepl.c](https://github.com/micropython/micropython/blob/master/extmod/modwebrepl.c)
+
+**Formato de Request (signature "WA"):**
+```python
+WEBREPL_REQ_S = "<2sBBQLH64s"  # Struct format
+# - 2s: signature "WA" (client → server)
+# - B: opcode (1=PUT_FILE, 2=GET_FILE)
+# - B: reserved
+# - Q: reserved (8 bytes)
+# - L: file size (4 bytes)
+# - H: filename length (2 bytes)
+# - 64s: filename (max 64 bytes)
+```
+
+**Formato de Response (signature "WB"):**
+```python
+# 4 bytes totales:
+# - 2 bytes: signature "WB" (server → client)
+# - 2 bytes: status code (0 = éxito)
+```
+
+### CRÍTICO: No mezclar protocolos
+
+**Problema:** Mezclar comandos de texto (`execute()`) con protocolo binario causa errores:
+- "Respuesta WebREPL muy corta: 2 bytes"
+- "a bytes-like object is required, not 'str'"
+- Datos residuales en buffer WebSocket
+
+**Solución:**
+1. Usar SOLO comandos de texto (execute) O protocolo binario, nunca mezclados
+2. Limpiar buffer WebSocket antes de transferencias binarias (`_clean_buffer_before_binary_transfer()`)
+3. WebREPL crea directorios automáticamente cuando filename contiene "/" - NO usar `os.mkdir()` manualmente
+
+### Implementación Robusta
+
+La implementación en `tools/common/webrepl_client.py` incluye:
+- **Retry logic**: Hasta 10 intentos para encontrar signature "WB"
+- **Buffer cleaning**: Descarta datos residuales del REPL antes de transferencias
+- **Type handling**: Convierte str→bytes para MicroPython 1.19 inconsistencies
+- **Automatic directory creation**: Confía en WebREPL para crear subdirectorios
+
 ## Common Gotchas
 
 - **First setup takes 30-60 seconds:** setup_initial.py deploys complete system (~20 files). This is normal and only happens once. LED should blink automatically when finished.
+- **"Respuesta WebREPL muy corta"**: Causado por mezclar comandos de texto con protocolo binario. NUNCA usar `client.execute()` antes de `send_file()`. WebREPL crea directorios automáticamente.
+- **Deploy falla en archivos de app**: Asegurar que buffer WebSocket está limpio antes de protocolo binario. La implementación actual limpia automáticamente.
 - WDT timeout during WiFi connection on slow/hidden networks → Use wdt_callback parameter
 - WebREPL not starting → Check IP address is valid and WiFi connected
 - Import errors after deploy → Ensure __init__.py files are uploaded first

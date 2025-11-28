@@ -226,23 +226,18 @@ def main():
         app_name = 'blink'
         print(f"{BLUE}📦 Usando app por defecto: blink{NC}\n")
 
-    # Crear directorios necesarios ANTES de usar protocolo binario
-    # Esto se hace UNA VEZ para evitar interferir con el protocolo binario
-    if app_name:
-        print(f"{BLUE}📁 Creando estructura de directorios...{NC}")
-        try:
-            mkdir_cmd = f"""
-import os
-try:
-    os.mkdir('{app_name}')
-except OSError as e:
-    if e.args[0] == 17:  # EEXIST
-        pass
-"""
-            client.execute(mkdir_cmd, timeout=2)
-            print(f"{GREEN}✅ Directorio '{app_name}/' listo{NC}\n")
-        except Exception as e:
-            print(f"{YELLOW}⚠️  No se pudo crear directorio (puede ya existir){NC}\n")
+    # IMPORTANTE: NO crear directorios con execute() porque interfiere con protocolo binario
+    # Según documentación oficial de MicroPython WebREPL y código en modwebrepl.c,
+    # el protocolo binario crea directorios automáticamente cuando el filename tiene "/"
+    # Ver: https://github.com/micropython/micropython/blob/master/extmod/modwebrepl.c
+    #
+    # Mezclar comandos de texto (execute) con protocolo binario causa errores:
+    # - "Respuesta WebREPL muy corta"
+    # - "a bytes-like object is required, not 'str'"
+    # - Datos residuales en buffer WebSocket
+    #
+    # Solución: Confiar en que WebREPL crea directorios automáticamente
+    print(f"{BLUE}📁 Los directorios se crearán automáticamente durante upload{NC}\n")
 
     print(f"\n📤 Iniciando upload de archivos...\n")
 

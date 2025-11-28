@@ -499,21 +499,104 @@ class WebREPLClient:
         Lee respuesta del protocolo binario WebREPL.
         Formato: 4 bytes (2 bytes signature "WB" + 2 bytes status code)
 
+        Basado en webrepl_cli.py oficial de MicroPython.
+        Implementación robusta que descarta datos spurious del buffer.
+
         Returns:
             int: Código de estado (0 = éxito)
 
         Raises:
-            AssertionError: Si la signature no es "WB"
+            ValueError: Si no se puede leer la respuesta correcta
         """
-        data = self.ws.recv()
-        if len(data) < 4:
-            raise ValueError(f"Respuesta WebREPL muy corta: {len(data)} bytes")
+        # MicroPython 1.19 puede tener datos residuales en el buffer
+        # Intentar leer hasta 10 veces para encontrar la signature "WB"
+        max_attempts = 10
 
-        sig, code = struct.unpack("<2sH", data[:4])
-        if sig != b"WB":
-            raise AssertionError(f"Signature incorrecta: esperado b'WB', recibido {sig}")
+        for attempt in range(max_attempts):
+            try:
+                data = self.ws.recv()
 
-        return code
+                # Convertir a bytes si es string (MicroPython 1.19 inconsistency)
+                if isinstance(data, str):
+                    data = data.encode('latin1')
+
+                # Si recibimos menos de 4 bytes, seguir intentando
+                if len(data) < 4:
+                    if self.verbose and attempt < 3:
+                        logger.debug(f"Respuesta corta ({len(data)} bytes), reintentando...")
+                    continue
+
+                # Buscar signature "WB" en los primeros bytes
+                # A veces hay basura al inicio por mezcla de protocolos
+                wb_index = data.find(b"WB")
+
+                if wb_index == -1:
+                    # No encontramos "WB", pero podría ser texto residual
+                    # del REPL - descartar y seguir
+                    if self.verbose and attempt < 3:
+                        logger.debug(f"Sin signature WB, descartando {len(data)} bytes")
+                    continue
+
+                # Asegurar que tenemos 4 bytes desde WB
+                if len(data) < wb_index + 4:
+                    if self.verbose:
+                        logger.debug("WB encontrado pero datos incompletos, esperando más...")
+                    continue
+
+                # Extraer signature y code
+                sig, code = struct.unpack("<2sH", data[wb_index:wb_index+4])
+
+                if sig == b"WB":
+                    logger.debug(f"Respuesta WebREPL OK: code={code}")
+                    return code
+
+            except websocket.WebSocketTimeoutException:
+                if self.verbose and attempt < 3:
+                    logger.debug(f"Timeout en intento {attempt+1}/{max_attempts}")
+                continue
+            except struct.error as e:
+                logger.warning(f"Error struct.unpack: {e}, reintentando...")
+                continue
+            except Exception as e:
+                logger.warning(f"Error leyendo respuesta (intento {attempt+1}): {e}")
+                if attempt >= max_attempts - 1:
+                    raise
+                continue
+
+        # Si llegamos aquí, no pudimos leer una respuesta válida
+        raise ValueError(f"No se pudo leer respuesta WebREPL válida después de {max_attempts} intentos")
+
+    def _clean_buffer_before_binary_transfer(self):
+        """
+        Limpia el buffer WebSocket antes de iniciar transferencia binaria.
+
+        CRÍTICO para MicroPython 1.19: Después de usar comandos de texto (execute),
+        pueden quedar datos residuales en el buffer que interfieren con el protocolo
+        binario. Esta función los descarta.
+
+        Basado en comportamiento observado y documentación oficial de WebREPL.
+        """
+        try:
+            # Configurar timeout corto para lectura rápida
+            old_timeout = self.ws.gettimeout()
+            self.ws.settimeout(0.1)
+
+            # Leer y descartar hasta 10 mensajes residuales
+            for _ in range(10):
+                try:
+                    data = self.ws.recv()
+                    logger.debug(f"Descartando {len(data)} bytes del buffer: {data[:50]}")
+                except websocket.WebSocketTimeoutException:
+                    # Buffer limpio, perfecto
+                    break
+                except:
+                    break
+
+            # Restaurar timeout
+            self.ws.settimeout(old_timeout)
+
+        except Exception as e:
+            logger.warning(f"Error limpiando buffer: {e}")
 
     def _create_directory_structure(self, remote_name):
         """
@@ -603,9 +686,6 @@ class WebREPLClient:
             print(f"{BLUE}📄 {local_path.name} → {remote_name} ({file_size} bytes){NC}")
 
         try:
-            # Crear directorios si es necesario
-            self._create_directory_structure(remote_name)
-
             # Preparar nombre de archivo remoto (sin sandbox prefix)
             dest_fname = remote_name.encode("utf-8")
 
@@ -629,15 +709,19 @@ class WebREPLClient:
                 dest_fname                # Filename
             )
 
+            # CRÍTICO: Limpiar buffer antes de protocolo binario
+            # MicroPython 1.19 tiene problemas si hay datos residuales del REPL
+            self._clean_buffer_before_binary_transfer()
+
             # Enviar request en dos partes (como hace webrepl_cli.py)
             # Usar timeout más largo para WiFi lento
             old_timeout = self.ws.gettimeout()
             self.ws.settimeout(10)  # 10 segundos para operaciones binarias
 
             try:
-                self.ws.send(rec[:10], opcode=websocket.ABNF.OPCODE_BINARY)
-                time.sleep(0.1)  # Pequeña pausa entre partes
-                self.ws.send(rec[10:], opcode=websocket.ABNF.OPCODE_BINARY)
+                # webrepl_cli.py oficial envía todo de una vez
+                # Según código oficial: ws.write(rec)
+                self.ws.send(rec, opcode=websocket.ABNF.OPCODE_BINARY)
             except (BrokenPipeError, ConnectionResetError) as e:
                 # Conexión perdida durante envío de header
                 if self.verbose:
