@@ -290,6 +290,16 @@ def main():
 
     if failed > 0:
         print(f"{RED}⚠️  Deploy completado con errores{NC}\n")
+        # Esperar antes de salir para Termux shortcuts
+        print(f"{YELLOW}Presiona Ctrl-C para salir o espera 30 segundos...{NC}")
+        try:
+            for i in range(30, 0, -1):
+                print(f"   Cerrando en {i} segundos...", end='\r')
+                sys.stdout.flush()
+                time.sleep(1)
+            print()
+        except KeyboardInterrupt:
+            print()
         sys.exit(1)
     
     # Preguntar si reiniciar
@@ -326,5 +336,26 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        print(f"{GREEN}👋 Cancelado por usuario{NC}")
+        sys.exit(0)
+    except Exception as e:
+        print()
+        print(f"{RED}❌ Error inesperado: {e}{NC}")
+        import traceback
+        traceback.print_exc()
+        print()
+        print(f"{YELLOW}Presiona Ctrl-C para salir o espera 30 segundos...{NC}")
+        try:
+            for i in range(30, 0, -1):
+                print(f"   Cerrando en {i} segundos...", end='\r')
+                sys.stdout.flush()
+                time.sleep(1)
+            print()
+        except KeyboardInterrupt:
+            print()
+        sys.exit(1)
 

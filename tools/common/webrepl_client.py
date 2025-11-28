@@ -600,30 +600,54 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                     logger.error(f"Error en reintento de upload: {retry_error}")
                     return False
 
-            time.sleep(1.0)  # Aumentar delay para dar tiempo al ESP8266
-            
+            # Dar más tiempo al ESP8266 para procesar, especialmente en WiFi lento (Termux)
+            time.sleep(1.5)
+
             response = ""
             try:
                 start_time = time.time()
-                timeout = 10  # Timeout de 10 segundos para recibir respuesta
+                # AUMENTADO: Timeout de 15 segundos para redes WiFi lentas (Termux/móvil)
+                timeout = 15
+                recv_attempts = 0
+                max_empty_attempts = 5  # Máximo de intentos vacíos antes de dar por terminado
+
                 while time.time() - start_time < timeout:
                     try:
-                        self.ws.settimeout(1)  # Timeout de 1 segundo por recv
+                        self.ws.settimeout(2.0)  # AUMENTADO: 2 segundos por recv (antes 1)
                         data = self.ws.recv()
+                        recv_attempts += 1
+
                         if isinstance(data, bytes):
                             response += data.decode('utf-8', errors='ignore')
                         else:
                             response += data
-                        
+
+                        # Confirmación exitosa
                         if "Uploaded" in response or ">>>" in response:
                             break
+
+                        # Reset contador si recibimos datos
+                        if data:
+                            max_empty_attempts = 5
+
                     except websocket.WebSocketTimeoutException:
                         # Continuar intentando hasta el timeout total
+                        max_empty_attempts -= 1
+                        if max_empty_attempts <= 0 and response:
+                            # Ya tenemos respuesta y llevamos varios timeouts vacíos
+                            logger.debug(f"Terminando recv temprano después de {recv_attempts} intentos con respuesta")
+                            break
                         pass
-                    
-                    time.sleep(0.1)
+                    except Exception as recv_error:
+                        logger.warning(f"Error durante recv: {recv_error}")
+                        break
+
+                    time.sleep(0.15)
+
             except websocket.WebSocketTimeoutException:
                 pass
+            except Exception as outer_error:
+                logger.error(f"Error en timeout loop: {outer_error}")
             
             # Check for errors FIRST
             if any(err in response for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"]):
@@ -637,22 +661,94 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                 return False
 
             # Require explicit confirmation
+            upload_confirmed = False
             if "Uploaded" in response and remote_name in response:
-                if self.verbose:
-                    print(f"{GREEN}   ✅ OK{NC}")
-                logger.info(f"Archivo subido exitosamente: {remote_name} ({file_size} bytes)")
-                return True
+                upload_confirmed = True
             elif ">>>" in response and len(response) > 10:
-                if self.verbose:
-                    print(f"{YELLOW}   ⚠️  Completado (verificar manualmente){NC}")
-                logger.warning(f"Upload completado sin confirmación explícita: {remote_name} (respuesta: {len(response)} caracteres)")
-                return True
+                # Confirmación implícita (prompt retornó)
+                upload_confirmed = True
             else:
                 if self.verbose:
                     print(f"{RED}   ❌ Sin confirmación de upload{NC}")
                     print(f"{YELLOW}      Respuesta recibida: {len(response)} caracteres{NC}")
                 logger.error(f"No se recibió confirmación de upload para {remote_name}. Respuesta: {response[:200]}")
                 return False
+
+            # VALIDACIÓN POST-UPLOAD: Verificar que el archivo existe y tiene el tamaño correcto
+            # Esto detecta fallos silenciosos que ocurren en WiFi inestable (Termux)
+            if upload_confirmed:
+                try:
+                    # Dar tiempo al filesystem a sincronizar
+                    time.sleep(0.3)
+
+                    # Verificar existencia y tamaño del archivo
+                    verify_code = f"""
+import os
+try:
+    size = os.stat('{remote_name}')[6]
+    print(f'VERIFY_OK:{remote_name}:{{size}}')
+except Exception as e:
+    print(f'VERIFY_ERROR:{{e}}')
+"""
+                    self.ws.send(verify_code + '\r\n')
+                    time.sleep(0.5)
+
+                    verify_response = ""
+                    verify_start = time.time()
+                    while time.time() - verify_start < 5:
+                        try:
+                            self.ws.settimeout(1.0)
+                            data = self.ws.recv()
+                            if isinstance(data, bytes):
+                                verify_response += data.decode('utf-8', errors='ignore')
+                            else:
+                                verify_response += data
+
+                            if 'VERIFY_OK' in verify_response or 'VERIFY_ERROR' in verify_response or '>>>' in verify_response:
+                                break
+                        except:
+                            break
+
+                    # Analizar respuesta de verificación
+                    if 'VERIFY_OK' in verify_response:
+                        # Extraer tamaño reportado
+                        try:
+                            verify_parts = verify_response.split('VERIFY_OK:')[1].split(':')
+                            if len(verify_parts) >= 2:
+                                remote_size = int(verify_parts[1].split()[0])
+                                # Verificar que el tamaño coincida (permitir diferencia de newlines)
+                                size_diff = abs(remote_size - file_size)
+                                if size_diff <= 10:  # Tolerancia de 10 bytes por diferencias de newline
+                                    if self.verbose:
+                                        print(f"{GREEN}   ✅ OK (verificado: {remote_size} bytes){NC}")
+                                    logger.info(f"Archivo verificado: {remote_name} ({remote_size} bytes)")
+                                    return True
+                                else:
+                                    if self.verbose:
+                                        print(f"{YELLOW}   ⚠️  Tamaño incorrecto: esperado ~{file_size}, obtenido {remote_size}{NC}")
+                                    logger.warning(f"Tamaño incorrecto para {remote_name}: esperado ~{file_size}, obtenido {remote_size}")
+                                    return False
+                        except Exception as parse_error:
+                            logger.debug(f"Error parseando verificación: {parse_error}")
+
+                    elif 'VERIFY_ERROR' in verify_response:
+                        if self.verbose:
+                            print(f"{RED}   ❌ Verificación falló: archivo no existe en ESP8266{NC}")
+                        logger.error(f"Archivo no encontrado en ESP8266 después de upload: {remote_name}")
+                        return False
+
+                    # Fallback: si no pudimos verificar, confiar en la confirmación original
+                    if self.verbose:
+                        print(f"{YELLOW}   ⚠️  No se pudo verificar (asumiendo OK){NC}")
+                    logger.warning(f"No se pudo verificar upload de {remote_name}, asumiendo exitoso")
+                    return True
+
+                except Exception as verify_error:
+                    # Error durante verificación no es fatal
+                    if self.verbose:
+                        print(f"{YELLOW}   ⚠️  Error verificando (asumiendo OK): {verify_error}{NC}")
+                    logger.warning(f"Error durante verificación de {remote_name}: {verify_error}")
+                    return True
         
         except ValueError:
             # Re-lanzar ValueError (tamaño de archivo)

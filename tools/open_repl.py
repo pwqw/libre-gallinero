@@ -117,12 +117,13 @@ def open_repl_session(client):
                     sys.stdout.write(output)
                     sys.stdout.flush()
                     break
-            except:
+            except Exception:
                 break
-    except:
+    except Exception:
         pass
 
     # Loop interactivo
+    connection_lost = False
     try:
         while True:
             try:
@@ -134,6 +135,14 @@ def open_repl_session(client):
                     print()
                     print(f"{GREEN}👋 Saliendo del REPL...{NC}")
                     break
+                except OSError as e:
+                    # Termux puede generar OSError cuando stdin se cierra
+                    print()
+                    print(f"{YELLOW}⚠️  Error de entrada (Termux): {e}{NC}")
+                    print(f"{YELLOW}   Presiona Enter para continuar o Ctrl-C para salir{NC}")
+                    import time
+                    time.sleep(2)
+                    continue
 
                 # Comandos especiales
                 if command.strip().lower() in ['exit()', 'exit', 'quit()', 'quit']:
@@ -143,21 +152,26 @@ def open_repl_session(client):
                 # Enviar comando al ESP8266
                 try:
                     client.ws.send(command + '\r\n')
-                except (ConnectionResetError, BrokenPipeError):
-                    print(f"{RED}❌ Conexión perdida con ESP8266{NC}")
+                except (ConnectionResetError, BrokenPipeError) as e:
+                    print(f"{RED}❌ Conexión perdida con ESP8266: {e}{NC}")
+                    connection_lost = True
+                    break
+                except Exception as e:
+                    print(f"{RED}❌ Error enviando comando: {e}{NC}")
+                    connection_lost = True
                     break
 
                 # Recibir y mostrar respuesta
                 import time
-                time.sleep(0.1)  # Dar tiempo al ESP8266 a procesar
+                time.sleep(0.2)  # Aumentado para Termux/WiFi
 
                 response = ""
                 start_time = time.time()
-                timeout = 5
+                timeout = 10  # Aumentado de 5 a 10 segundos para redes lentas
 
                 while time.time() - start_time < timeout:
                     try:
-                        client.ws.settimeout(0.5)
+                        client.ws.settimeout(1.0)  # Aumentado de 0.5 a 1.0
                         data = client.ws.recv()
                         if isinstance(data, bytes):
                             response += data.decode('utf-8', errors='ignore')
@@ -167,10 +181,14 @@ def open_repl_session(client):
                         # Si vemos el prompt, terminamos
                         if '>>>' in response:
                             break
-                    except:
+                    except Exception as recv_err:
                         # Timeout o fin de datos
                         if response:
                             break
+                        # Solo mostrar error si es algo crítico (no timeout normal)
+                        if not isinstance(recv_err, Exception) or 'timed out' not in str(recv_err).lower():
+                            # Error inesperado
+                            pass
                         continue
 
                 # Mostrar respuesta
@@ -183,7 +201,7 @@ def open_repl_session(client):
                 print()
                 try:
                     client.ws.send('\x03')  # Ctrl-C
-                    time.sleep(0.2)
+                    time.sleep(0.3)
                     # Recibir respuesta
                     try:
                         client.ws.settimeout(0.5)
@@ -194,95 +212,190 @@ def open_repl_session(client):
                             output = data
                         sys.stdout.write(output)
                         sys.stdout.flush()
-                    except:
+                    except Exception:
                         pass
-                except:
-                    print(f"{RED}❌ Error enviando Ctrl-C{NC}")
+                except Exception as ctrl_c_err:
+                    print(f"{RED}❌ Error enviando Ctrl-C: {ctrl_c_err}{NC}")
                 continue
 
     except Exception as e:
         print()
-        print(f"{RED}❌ Error en sesión REPL: {e}{NC}")
+        print(f"{RED}❌ Error crítico en sesión REPL: {e}{NC}")
+        import traceback
+        traceback.print_exc()
+        connection_lost = True
 
     print()
     print(f"{GREEN}{'━' * 60}{NC}")
-    print(f"{GREEN}Sesión REPL terminada{NC}")
+    if connection_lost:
+        print(f"{YELLOW}⚠️  Sesión REPL terminada (conexión perdida){NC}")
+    else:
+        print(f"{GREEN}Sesión REPL terminada{NC}")
     print(f"{GREEN}{'━' * 60}{NC}")
+
+
+def wait_before_exit(error_occurred=False):
+    """
+    Espera antes de salir para que el usuario pueda leer el mensaje.
+    Crítico para Termux shortcuts que se cierran automáticamente.
+
+    Args:
+        error_occurred: Si True, muestra mensaje de error y espera más tiempo
+    """
+    import time
+
+    if error_occurred:
+        print()
+        print(f"{YELLOW}{'━' * 60}{NC}")
+        print(f"{YELLOW}⚠️  OCURRIÓ UN ERROR{NC}")
+        print(f"{YELLOW}   Presiona Ctrl-C para salir o espera 30 segundos{NC}")
+        print(f"{YELLOW}{'━' * 60}{NC}")
+        print()
+
+        try:
+            # Esperar 30 segundos o hasta Ctrl-C
+            for i in range(30, 0, -1):
+                print(f"   Cerrando en {i} segundos...", end='\r')
+                sys.stdout.flush()
+                time.sleep(1)
+            print()
+        except KeyboardInterrupt:
+            print()
+            print(f"{GREEN}👋 Saliendo...{NC}")
+    else:
+        # Salida normal, solo un pequeño delay
+        time.sleep(0.5)
 
 
 def main():
-    print(f"{BLUE}🐔 Libre-Gallinero WebREPL{NC}\n")
+    error_occurred = False
 
-    # Detectar directorio del proyecto
-    project_dir = script_dir.parent
-    config = load_config(project_dir)
+    try:
+        print(f"{BLUE}🐔 Libre-Gallinero WebREPL{NC}\n")
 
-    # Seleccionar app / IP
-    app_name, manual_ip = select_app()
-    print()
+        # Detectar directorio del proyecto
+        project_dir = script_dir.parent
+        config = load_config(project_dir)
 
-    # Obtener IP (prioridad: manual > caché > .env)
-    ip = None
-    if manual_ip:
-        ip = manual_ip
-        print(f"{BLUE}🌐 Usando IP manual: {ip}{NC}")
-    elif app_name:
-        cached_ip = get_cached_ip(app_name, verbose=True)
-        if cached_ip:
-            ip = cached_ip
-        else:
-            print(f"{YELLOW}⚠️  No hay IP cacheada para '{app_name}', usando .env{NC}")
-            ip = config.get('WEBREPL_IP')
-    else:
-        # Usar IP del .env
-        ip = config.get('WEBREPL_IP')
-        if ip:
-            print(f"{BLUE}🌐 Usando IP del .env: {ip}{NC}")
+        # Seleccionar app / IP
+        try:
+            app_name, manual_ip = select_app()
+        except Exception as e:
+            print(f"{RED}❌ Error seleccionando app: {e}{NC}")
+            error_occurred = True
+            wait_before_exit(error_occurred)
+            sys.exit(1)
 
-    if not ip:
-        print(f"{RED}❌ No se pudo obtener IP del ESP8266{NC}")
-        print(f"   Configura WEBREPL_IP en .env o usa una IP cacheada")
-        sys.exit(1)
+        print()
 
-    print()
-
-    # Obtener password
-    password = get_password(config, retry=False)
-
-    # Intentar conectar
-    max_retries = 3
-    for attempt in range(max_retries):
-        if attempt > 0:
-            print()
-            print(f"{YELLOW}Intento {attempt + 1}/{max_retries}...{NC}")
-            password = get_password(config, retry=True)
-
-        client = WebREPLClient(
-            ip=ip,
-            password=password,
-            project_dir=project_dir,
-            verbose=True,
-            auto_discover=False
-        )
-
-        if client.connect():
-            # Conexión exitosa
-            open_repl_session(client)
-            client.close()
-            sys.exit(0)
-        else:
-            # Falló
-            if attempt < max_retries - 1:
-                print(f"{YELLOW}⚠️  Conexión fallida{NC}")
+        # Obtener IP (prioridad: manual > caché > .env)
+        ip = None
+        if manual_ip:
+            ip = manual_ip
+            print(f"{BLUE}🌐 Usando IP manual: {ip}{NC}")
+        elif app_name:
+            cached_ip = get_cached_ip(app_name, verbose=True)
+            if cached_ip:
+                ip = cached_ip
             else:
+                print(f"{YELLOW}⚠️  No hay IP cacheada para '{app_name}', usando .env{NC}")
+                ip = config.get('WEBREPL_IP')
+        else:
+            # Usar IP del .env
+            ip = config.get('WEBREPL_IP')
+            if ip:
+                print(f"{BLUE}🌐 Usando IP del .env: {ip}{NC}")
+
+        if not ip:
+            print(f"{RED}❌ No se pudo obtener IP del ESP8266{NC}")
+            print(f"   Configura WEBREPL_IP en .env o usa una IP cacheada")
+            error_occurred = True
+            wait_before_exit(error_occurred)
+            sys.exit(1)
+
+        print()
+
+        # Obtener password
+        try:
+            password = get_password(config, retry=False)
+        except Exception as e:
+            print(f"{RED}❌ Error obteniendo password: {e}{NC}")
+            error_occurred = True
+            wait_before_exit(error_occurred)
+            sys.exit(1)
+
+        # Intentar conectar
+        max_retries = 3
+        connected = False
+
+        for attempt in range(max_retries):
+            if attempt > 0:
                 print()
-                print(f"{RED}❌ No se pudo conectar después de {max_retries} intentos{NC}")
-                print(f"{YELLOW}Verifica:{NC}")
-                print(f"  1. ESP8266 está encendido")
-                print(f"  2. ESP8266 está conectado a WiFi")
-                print(f"  3. WebREPL está activo")
-                print(f"  4. IP es correcta: {ip}")
-                sys.exit(1)
+                print(f"{YELLOW}Intento {attempt + 1}/{max_retries}...{NC}")
+                try:
+                    password = get_password(config, retry=True)
+                except Exception as e:
+                    print(f"{RED}❌ Error obteniendo password: {e}{NC}")
+                    error_occurred = True
+                    break
+
+            try:
+                client = WebREPLClient(
+                    ip=ip,
+                    password=password,
+                    project_dir=project_dir,
+                    verbose=True,
+                    auto_discover=False
+                )
+
+                if client.connect():
+                    # Conexión exitosa
+                    connected = True
+                    open_repl_session(client)
+                    client.close()
+                    break
+                else:
+                    # Falló
+                    if attempt < max_retries - 1:
+                        print(f"{YELLOW}⚠️  Conexión fallida{NC}")
+                    else:
+                        print()
+                        print(f"{RED}❌ No se pudo conectar después de {max_retries} intentos{NC}")
+                        print(f"{YELLOW}Verifica:{NC}")
+                        print(f"  1. ESP8266 está encendido")
+                        print(f"  2. ESP8266 está conectado a WiFi")
+                        print(f"  3. WebREPL está activo")
+                        print(f"  4. IP es correcta: {ip}")
+                        error_occurred = True
+
+            except Exception as e:
+                print()
+                print(f"{RED}❌ Error crítico durante conexión: {e}{NC}")
+                import traceback
+                traceback.print_exc()
+                error_occurred = True
+                break
+
+        # Si hubo error, esperar antes de salir
+        if error_occurred:
+            wait_before_exit(error_occurred)
+            sys.exit(1)
+        else:
+            # Salida exitosa
+            wait_before_exit(error_occurred=False)
+            sys.exit(0)
+
+    except KeyboardInterrupt:
+        print()
+        print(f"{GREEN}👋 Cancelado por usuario{NC}")
+        sys.exit(0)
+    except Exception as e:
+        print()
+        print(f"{RED}❌ Error inesperado: {e}{NC}")
+        import traceback
+        traceback.print_exc()
+        wait_before_exit(error_occurred=True)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
