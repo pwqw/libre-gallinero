@@ -40,6 +40,42 @@ def _reset_wlan():
     time.sleep(0.5)
     return _wlan
 
+def _start_ap_fallback(cfg):
+    # Activa Access Point como fallback cuando WiFi falla
+    # SSID: "Gallinero-Setup"
+    # Password: WIFI_PASSWORD del .env o "1234" si no existe
+    # IP: 192.168.4.1
+    try:
+        import network
+        ap = network.WLAN(network.AP_IF)
+        
+        # Obtener password del .env o usar "1234" como fallback
+        ap_password = cfg.get('WIFI_PASSWORD', '1234')
+        if not ap_password or ap_password.strip() == '':
+            ap_password = '1234'
+        
+        if isinstance(ap_password, bytes):
+            ap_password = ap_password.decode('utf-8')
+        
+        # Configurar y activar AP
+        ap.active(True)
+        ap.config(essid='Gallinero-Setup', password=ap_password)
+        
+        # Configurar IP estática
+        ap.ifconfig(('192.168.4.1', '255.255.255.0', '192.168.4.1', '192.168.4.1'))
+        
+        log("📡 Hotspot activado: Gallinero-Setup")
+        log(f"   IP: 192.168.4.1")
+        log(f"   Password: {'*' * len(ap_password)}")
+        
+        # Iniciar WebREPL en el AP
+        _start_webrepl('192.168.4.1')
+        
+        return True
+    except Exception as e:
+        log(f"✗ Error activando AP: {e}")
+        return False
+
 def _start_webrepl(ip):
     try:
         import webrepl
@@ -85,11 +121,26 @@ def connect_wifi(cfg, wdt_callback=None):
             log(f"WiFi ya conectado: {ip}")
             _check_ip_range(ip)
             _start_webrepl(ip)
+            # Desactivar AP si WiFi está conectado
+            try:
+                import network
+                ap = network.WLAN(network.AP_IF)
+                if ap.active():
+                    ap.active(False)
+            except:
+                pass
         return True
 
-    ssid = cfg['WIFI_SSID']
-    pw = cfg['WIFI_PASSWORD']
+    ssid = cfg.get('WIFI_SSID', '').strip()
+    pw = cfg.get('WIFI_PASSWORD', '').strip()
     hidden = cfg.get('WIFI_HIDDEN', 'false').lower() == 'true'
+
+    # Si no hay WiFi configurada, activar AP inmediatamente
+    if not ssid or ssid == '':
+        log("⚠ No hay WiFi configurada en .env")
+        log("📡 Activando hotspot de fallback...")
+        _start_ap_fallback(cfg)
+        return False
 
     if isinstance(ssid, bytes):
         ssid = ssid.decode('utf-8')
@@ -183,6 +234,13 @@ def connect_wifi(cfg, wdt_callback=None):
         status = wlan.status()
         status_name = status_map.get(status, f'UNKNOWN({status})')
         log(f"✗ Intento #{attempt} falló - {status_name}")
+        
+        # Después de 3 intentos fallidos, activar AP como fallback
+        if attempt >= 3:
+            log("⚠ No se pudo conectar después de 3 intentos")
+            log("📡 Activando hotspot de fallback...")
+            _start_ap_fallback(cfg)
+            return False
         
         if (status in [202, 201, 200] and attempt % 3 == 0) or \
            (wlan.isconnected() and attempt > 1):
