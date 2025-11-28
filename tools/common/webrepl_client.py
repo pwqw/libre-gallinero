@@ -550,6 +550,31 @@ except OSError as e:
 
         return True
 
+    def _ensure_connection(self):
+        """
+        Verifica que la conexión WebSocket esté activa.
+        Si está caída, intenta reconectar.
+
+        Returns:
+            bool: True si hay conexión activa
+        """
+        if not self.ws:
+            return False
+
+        try:
+            # Ping para verificar que la conexión está viva
+            self.ws.ping()
+            return True
+        except:
+            # Conexión caída, intentar reconectar
+            if self.verbose:
+                print(f"{YELLOW}   ⚠️  Conexión perdida, reconectando...{NC}")
+            logger.warning("Conexión WebREPL perdida, intentando reconectar")
+
+            self.close()
+            time.sleep(2)
+            return self.connect()
+
     def send_file(self, local_path, remote_name, max_size=None):
         """
         Sube un archivo al ESP8266 usando protocolo binario WebREPL.
@@ -563,7 +588,8 @@ except OSError as e:
         Returns:
             bool: True si el upload fue exitoso, False en caso contrario
         """
-        if not self.ws:
+        # Verificar conexión antes de cada archivo
+        if not self._ensure_connection():
             if self.verbose:
                 print(f"{RED}❌ No hay conexión WebREPL activa{NC}")
             logger.error("No hay conexión WebREPL activa")
@@ -620,21 +646,37 @@ except OSError as e:
             )
 
             # Enviar request en dos partes (como hace webrepl_cli.py)
-            self.ws.send(rec[:10], opcode=websocket.ABNF.OPCODE_BINARY)
-            self.ws.send(rec[10:], opcode=websocket.ABNF.OPCODE_BINARY)
+            # Usar timeout más largo para WiFi lento
+            old_timeout = self.ws.gettimeout()
+            self.ws.settimeout(10)  # 10 segundos para operaciones binarias
+
+            try:
+                self.ws.send(rec[:10], opcode=websocket.ABNF.OPCODE_BINARY)
+                time.sleep(0.1)  # Pequeña pausa entre partes
+                self.ws.send(rec[10:], opcode=websocket.ABNF.OPCODE_BINARY)
+            except (BrokenPipeError, ConnectionResetError) as e:
+                # Conexión perdida durante envío de header
+                if self.verbose:
+                    print(f"{RED}   ❌ Conexión perdida durante header: {e}{NC}")
+                logger.error(f"Conexión perdida al enviar header para {remote_name}: {e}")
+                self.ws.settimeout(old_timeout)
+                return False
 
             # Leer respuesta de confirmación
             try:
+                time.sleep(0.5)  # Dar tiempo al ESP8266 a procesar
                 resp_code = self._read_webrepl_resp()
                 if resp_code != 0:
                     if self.verbose:
                         print(f"{RED}   ❌ ESP8266 rechazó request (code: {resp_code}){NC}")
                     logger.error(f"ESP8266 rechazó request para {remote_name}: code {resp_code}")
+                    self.ws.settimeout(old_timeout)
                     return False
             except Exception as e:
                 if self.verbose:
                     print(f"{RED}   ❌ Error leyendo respuesta: {e}{NC}")
                 logger.error(f"Error leyendo respuesta WebREPL: {e}")
+                self.ws.settimeout(old_timeout)
                 return False
 
             # Enviar contenido del archivo en chunks de 1024 bytes
@@ -655,17 +697,23 @@ except OSError as e:
 
             # Leer respuesta final de confirmación
             try:
+                time.sleep(0.5)  # Dar tiempo al ESP8266 a escribir el archivo
                 resp_code = self._read_webrepl_resp()
                 if resp_code != 0:
                     if self.verbose:
                         print(f"{RED}   ❌ Upload falló (code: {resp_code}){NC}")
                     logger.error(f"Upload falló para {remote_name}: code {resp_code}")
+                    self.ws.settimeout(old_timeout)
                     return False
             except Exception as e:
                 if self.verbose:
                     print(f"{RED}   ❌ Error en confirmación final: {e}{NC}")
                 logger.error(f"Error en confirmación final: {e}")
+                self.ws.settimeout(old_timeout)
                 return False
+
+            # Restaurar timeout original
+            self.ws.settimeout(old_timeout)
 
             if self.verbose:
                 print(f"{GREEN}   ✅ OK ({bytes_sent} bytes){NC}")
