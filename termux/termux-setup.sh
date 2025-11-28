@@ -25,29 +25,8 @@ cd "$HOME/libre-gallinero"
 git fetch --all
 git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 
-# 3. Instalar las dependencias necesarias
-printf "\n\n📦 [3] Instalando dependencias necesarias... 🔧\n"
-pkg update -y
-pkg upgrade -y
-pkg install -y \
-  git \
-  python \
-  termux-api termux-tools
-
-# 4. Verificar que Python3 esté disponible
-printf "\n\n🐍 [4] Verificando Python3...\n"
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "❌ Error: python3 no encontrado"
-  exit 1
-fi
-echo "✅ Python3 encontrado: $(python3 --version)"
-
-# 5. Instalar dependencias Python para WebREPL
-printf "\n\n📦 [5] Instalando dependencias Python (websocket-client)...\n"
-pip install websocket-client
-
-# 6. Crear los accesos directos para Termux-Widget
-printf "\n\n🔗 [7] Creando accesos directos para Termux-Widget...\n"
+# 3. Crear los accesos directos para Termux-Widget
+printf "\n\n🔗 [3] Creando accesos directos para Termux-Widget...\n"
 if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
@@ -76,6 +55,27 @@ copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-heladera.sh" "$HOME
 
 # Shortcut para abrir REPL interactivo
 copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/open-repl.sh" "$HOME/.shortcuts/Abrir REPL"
+
+# 4. Instalar las dependencias necesarias
+printf "\n\n📦 [4] Instalando dependencias necesarias... 🔧\n"
+pkg update -y
+pkg upgrade -y
+pkg install -y \
+  git \
+  python \
+  termux-api termux-tools
+
+# 5. Verificar que Python3 esté disponible
+printf "\n\n🐍 [5] Verificando Python3...\n"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "❌ Error: python3 no encontrado"
+  exit 1
+fi
+echo "✅ Python3 encontrado: $(python3 --version)"
+
+# 6. Instalar dependencias Python para WebREPL
+printf "\n\n📦 [6] Instalando dependencias Python (websocket-client)...\n"
+pip install websocket-client
 
 printf "\n\n✅ ¡Setup completo!\n\n"
 printf "📋 Shortcuts instalados en Termux Widget:\n"
