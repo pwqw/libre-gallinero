@@ -33,25 +33,29 @@ cd libre-gallinero
 cp .env.example .env
 nano .env  # Editar WiFi y password
 
-# 3. Setup inicial (USB, solo una vez)
+# 3. Setup inicial (USB, solo una vez) - Despliega app blink por defecto
 python3 tools/setup_initial.py
 
-# 4. Deploy (ya sin cables)
-python3 tools/deploy_wifi.py
+# 4. Cambiar a app deseada (ya sin cables)
+python3 tools/deploy_wifi.py gallinero
 ```
 
 ### Desarrollo diario (PC/Mac o Termux/Android)
+
+**Todas las herramientas en `tools/` funcionan en cualquier plataforma:**
 
 ```bash
 # Editar código
 vim src/main.py
 
-# Deploy automático
-python3 tools/deploy_wifi.py gallinero  # WiFi (sin cables)
-# O con caché de IPs (más rápido, ideal para móvil)
-python3 tools/deploy_app.py gallinero   # WiFi + caché de IP
-# O
-python3 tools/deploy_usb.py gallinero   # USB (más rápido)
+# Deploy - Elige método según preferencia:
+python3 tools/deploy_wifi.py gallinero    # WiFi (sin cables)
+python3 tools/deploy_app.py gallinero     # WiFi + caché de IP (más rápido)
+python3 tools/deploy_usb.py gallinero     # USB (más rápido si estás conectado)
+
+# Utilidades:
+python3 tools/open_repl.py                # REPL interactivo
+python3 tools/clean_esp8266.py            # Limpiar archivos viejos
 ```
 
 ### Instalación rápida en Termux (Android)
@@ -65,17 +69,29 @@ Luego configura `.env` y usa `python3 tools/deploy_wifi.py` para deploy.
 ## Estructura del Proyecto
 ```
 libre-gallinero/
-├── src/             # Código ESP8266
-│   ├── boot.py      # Bootstrapping WiFi + WebREPL
-│   ├── main.py      # Lógica principal
-│   ├── solar.py     # Cálculos solares
-│   └── logic.py     # Control de relés
-├── tools/           # Scripts de deployment
-│   ├── deploy_wifi.py    # Deploy vía WiFi
-│   ├── deploy_usb.py     # Deploy vía USB
-│   └── setup_initial.py  # Setup inicial
-├── docs/            # Documentación
-└── requirements.txt # Dependencias Python
+├── src/                    # Código ESP8266
+│   ├── boot.py             # Bootstrap minimal
+│   ├── main.py             # Orchestrator principal
+│   ├── config.py           # Config loader (.env)
+│   ├── wifi.py             # WiFi manager
+│   ├── ntp.py              # NTP sync
+│   ├── app_loader.py       # Dynamic app loader
+│   ├── blink/              # App: LED test
+│   ├── gallinero/          # App: Chicken coop automation
+│   └── heladera/           # App: Refrigerator (experimental)
+├── tools/                  # Herramientas (cross-platform)
+│   ├── setup_initial.py    # Setup inicial (USB, primera vez)
+│   ├── deploy_wifi.py      # Deploy vía WiFi
+│   ├── deploy_usb.py       # Deploy vía USB
+│   ├── deploy_app.py       # Deploy con caché de IP
+│   ├── open_repl.py        # REPL interactivo
+│   ├── clean_esp8266.py    # Limpieza de archivos
+│   └── common/             # Módulos compartidos
+├── pc/                     # Wrappers opcionales para PC
+├── termux/                 # Scripts para Termux/Android
+│   ├── termux-setup.sh     # Setup completo de Termux
+│   └── shortcuts/          # Shortcuts para Termux Widget
+└── tests/                  # Tests (pytest)
 ```
 
 ## Documentación

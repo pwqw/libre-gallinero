@@ -26,26 +26,37 @@ pytest tests/ -v
 
 ### Deployment
 
+**Todas las herramientas están en `tools/` - funcionan en PC, Mac, Linux y Termux:**
+
 ```bash
 # Initial setup (USB only, first time) - DEPLOYS COMPLETE SYSTEM
 python3 tools/setup_initial.py
 # After this, ESP8266 is fully functional with blink app
 # LED will start blinking after reboot
 
-# Change app via WiFi (preferred for development)
+# Deploy via WiFi (preferred for development)
 python3 tools/deploy_wifi.py gallinero       # Deploy gallinero app
 python3 tools/deploy_wifi.py heladera        # Deploy heladera app
 python3 tools/deploy_wifi.py blink           # Re-deploy blink
 python3 tools/deploy_wifi.py heladera 192.168.1.100  # Specify IP
 
-# Change app with IP caching (faster, recommended for Termux/mobile)
+# Deploy with IP caching (faster, recommended for Termux/mobile)
 python3 tools/deploy_app.py gallinero        # Uses cached IP from previous deploy
 python3 tools/deploy_app.py heladera         # First run scans network, then caches IP
 python3 tools/deploy_app.py blink            # Each app has separate IP cache
 
-# Change app via USB (faster for local development)
-python3 tools/deploy_usb.py gallinero        # Deploy via USB
-python3 tools/deploy_usb.py blink            # Deploy via USB
+# Deploy via USB (faster for local development)
+python3 tools/deploy_usb.py gallinero        # Deploy gallinero via USB
+python3 tools/deploy_usb.py blink            # Deploy blink via USB
+python3 tools/deploy_usb.py heladera         # Deploy heladera via USB
+
+# Utilities
+python3 tools/clean_esp8266.py               # Interactive cleanup tool
+python3 tools/open_repl.py                   # Open interactive REPL
+
+# Platform-specific wrappers (optional, just call tools/ directly)
+./pc/deploy.sh gallinero                     # PC wrapper → tools/deploy_usb.py
+python3 pc/setup_webrepl.py                  # PC wrapper → tools/setup_initial.py
 ```
 
 ### Configuration
