@@ -1,6 +1,7 @@
 # Blink App - LED blink example
 # App minimalista para setup inicial y testing básico
 # Interfaz común: run(cfg)
+import sys
 
 try:
     import machine
@@ -56,13 +57,11 @@ def run(cfg):
                     timestamp = f"{tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
                     print(f'[blink] 💓 {timestamp} | Mem: {mem}B | Iter: {iteration}')
                     # Flush para asegurar salida inmediata
-                    import sys
                     if hasattr(sys.stdout, 'flush'):
                         sys.stdout.flush()
                 except:
                     pass
     except Exception as e:
         print(f'[blink] Error: {e}')
-        import sys
         sys.print_exception(e)
 

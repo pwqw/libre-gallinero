@@ -1,4 +1,6 @@
 # wifi.py - WiFi connection manager
+import sys
+
 _wlan = None
 _cfg = None
 _wdt_callback = None
@@ -6,7 +8,6 @@ _wdt_callback = None
 def log(msg):
     print(f"[wifi] {msg}")
     try:
-        import sys
         if hasattr(sys.stdout, 'flush'):
             sys.stdout.flush()
     except:

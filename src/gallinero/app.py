@@ -1,5 +1,5 @@
 # Main application logic for gallinero (chicken coop)
-
+import sys
 import time
 import gc
 from .solar import calc_sun_times
@@ -77,7 +77,6 @@ def run(cfg):
                 timestamp = f"{tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
                 print(f'[gallinero] 💓 {timestamp} | Mem: {mem}B | Iter: {iteration}')
                 # Flush para asegurar salida inmediata
-                import sys
                 if hasattr(sys.stdout, 'flush'):
                     sys.stdout.flush()
             except:

@@ -1,5 +1,6 @@
 # config.py - Configuration loader
 # Centralized module for loading .env configuration
+import sys
 
 # Constantes de configuración por defecto
 DEFAULT_CONFIG = {
@@ -16,7 +17,6 @@ def log(msg):
     """Escribe al serial de forma consistente"""
     print(f"[config] {msg}")
     try:
-        import sys
         if hasattr(sys.stdout, 'flush'):
             sys.stdout.flush()
     except:

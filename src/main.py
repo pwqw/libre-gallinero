@@ -1,10 +1,11 @@
 # main.py - Main orchestrator
+import sys
+
 _wdt = None
 
 def log(msg):
     print(f"[main] {msg}")
     try:
-        import sys
         if hasattr(sys.stdout, 'flush'):
             sys.stdout.flush()
     except:

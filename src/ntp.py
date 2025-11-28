@@ -1,11 +1,11 @@
 # ntp.py - NTP time synchronization
 # Minimal module for NTP sync
+import sys
 
 def log(msg):
     """Escribe al serial de forma consistente"""
     print(f"[ntp] {msg}")
     try:
-        import sys
         if hasattr(sys.stdout, 'flush'):
             sys.stdout.flush()
     except:

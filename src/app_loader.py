@@ -1,10 +1,10 @@
 # app_loader.py - App loader
 # Carga y ejecuta la app configurada para esta plaquita NodeMCU
+import sys
 
 def log(msg):
     print(f"[app] {msg}")
     try:
-        import sys
         if hasattr(sys.stdout, 'flush'):
             sys.stdout.flush()
     except:

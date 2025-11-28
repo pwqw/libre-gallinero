@@ -1,5 +1,6 @@
 # Heladera App - LED blink example
 # Interfaz común: run(cfg)
+import sys
 
 try:
     import machine
@@ -38,6 +39,5 @@ def run(cfg):
             gc.collect()
     except Exception as e:
         print(f'[heladera] Error: {e}')
-        import sys
         sys.print_exception(e)
 

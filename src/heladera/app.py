@@ -22,6 +22,7 @@
 #    D2 (GPIO2)  -> LED integrado (status indicator)
 #    GND         -> Relay GND
 #    VIN (5V)    -> Relay VCC
+import sys
 
 try:
     import machine
@@ -43,8 +44,11 @@ LED_BLINK_INTERVAL = 0.5  # Parpadeo cuando no hay NTP
 def log(msg):
     """Log with module prefix"""
     print(f'[heladera] {msg}')
-    import sys
-    sys.stdout.flush()
+    try:
+        if hasattr(sys.stdout, 'flush'):
+            sys.stdout.flush()
+    except:
+        pass
 
 def has_valid_time():
     """
@@ -185,5 +189,4 @@ def run(cfg):
             pass
     except Exception as e:
         log(f'Error: {e}')
-        import sys
         sys.print_exception(e)
