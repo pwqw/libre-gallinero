@@ -25,7 +25,7 @@ def run(cfg):
     try:
         # Obtener configuración (opcional)
         pin = int(cfg.get('LED_PIN', LED_PIN))
-        delay = float(cfg.get('LED_DELAY', 0.5))
+        delay = float(cfg.get('LED_DELAY', 0.66))
         
         led = machine.Pin(pin, machine.Pin.OUT)
         print(f'[blink] LED inicializado en pin {pin}')
