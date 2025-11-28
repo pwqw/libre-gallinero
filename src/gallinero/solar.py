@@ -17,7 +17,7 @@ def calc_sun_times(year, month, day, latitude=LATITUDE, longitude=LONGITUDE):
     H = math.acos((math.sin(math.radians(-0.83)) - math.sin(math.radians(latitude))*math.sin(delta)) / (math.cos(math.radians(latitude))*math.cos(delta)))
     Jrise = Jtransit - H/(2*math.pi)
     Jset = Jtransit + H/(2*math.pi)
-    def jd_to_hm(jd, tz_offset=-3):
+    def jd_to_hm(jd, longitude):
         # Convertir JD a fecha/hora UTC
         Z = int(jd)
         F = jd - Z
@@ -34,11 +34,14 @@ def calc_sun_times(year, month, day, latitude=LATITUDE, longitude=LONGITUDE):
         frac_day = day - int(day)
         hours = int(frac_day * 24)
         minutes = int((frac_day * 24 - hours) * 60)
+        # Calcular timezone desde longitud
+        from .. import timezone as tz_module
+        tz_offset = tz_module.get_timezone_offset(longitude)
         # Ajustar por zona horaria
         hours = (hours + tz_offset) % 24
         return hours, minutes
-    sunrise = jd_to_hm(Jrise)
-    sunset = jd_to_hm(Jset)
+    sunrise = jd_to_hm(Jrise, longitude)
+    sunset = jd_to_hm(Jset, longitude)
     return sunrise, sunset
 
 

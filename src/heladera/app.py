@@ -33,9 +33,11 @@ def has_valid_time():
         return False
 
 def is_night_time():
+    """Check if current time is in night period (00:00-07:00)"""
     try:
         hour = time.localtime()[3]
-        return hour >= NIGHT_START_HOUR and hour < NIGHT_END_HOUR
+        # Night period: 00:00 (0) to 06:59 (6)
+        return hour < NIGHT_END_HOUR
     except:
         return False
 

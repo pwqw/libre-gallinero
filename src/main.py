@@ -63,10 +63,11 @@ def main():
         # Otro error - ignorar silenciosamente
         pass
     
-    # NTP
+    # NTP con timezone
     feed_wdt()
     import ntp
-    ntp_ok = ntp.sync_ntp()
+    longitude = cfg.get('LONGITUDE', -64.1833)
+    ntp_ok = ntp.sync_ntp(longitude=longitude)
     if not ntp_ok:
         log("⚠ NTP falló")
     feed_wdt()
