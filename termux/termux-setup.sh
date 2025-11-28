@@ -31,30 +31,11 @@ if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
 
-# Función helper para copiar shortcuts
-copy_shortcut() {
-  local src="$1"
-  local dest="$2"
-  if [ -f "$src" ]; then
-    cp -f "$src" "$dest"
-    chmod +x "$dest"
-    printf "   ✓ $dest\n"
-  else
-    printf "   ⚠️  No encontrado: $src (omitiendo)\n"
-  fi
-}
+# Copiar TODOS los shortcuts del directorio (los nombres ya están correctos)
+cp -f "$HOME/libre-gallinero/termux/shortcuts/"* "$HOME/.shortcuts/"
+chmod +x "$HOME/.shortcuts/"*
 
-# Shortcuts originales
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/setup.sh" "$HOME/.shortcuts/Update Setup"
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-test.sh" "$HOME/.shortcuts/Desplegar Prueba"
-
-# Nuevos shortcuts por app (con caché de IPs)
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-blink.sh" "$HOME/.shortcuts/Deploy Blink"
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-gallinero.sh" "$HOME/.shortcuts/Deploy Gallinero"
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-heladera.sh" "$HOME/.shortcuts/Deploy Heladera"
-
-# Shortcut para abrir REPL interactivo
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/open-repl.sh" "$HOME/.shortcuts/Abrir REPL"
+printf "   ✓ Todos los shortcuts copiados a ~/.shortcuts/\n"
 
 # 4. Instalar las dependencias necesarias
 printf "\n\n📦 [4] Instalando dependencias necesarias... 🔧\n"
@@ -79,11 +60,14 @@ pip install websocket-client
 
 printf "\n\n✅ ¡Setup completo!\n\n"
 printf "📋 Shortcuts instalados en Termux Widget:\n"
-printf "  • Update Setup     - Actualiza el repositorio y dependencias\n"
-printf "  • Abrir REPL       - Abre REPL interactivo del ESP8266\n"
-printf "  • Deploy Blink     - Despliega app Blink (LED test)\n"
-printf "  • Deploy Gallinero - Despliega app Gallinero (producción)\n"
-printf "  • Deploy Heladera  - Despliega app Heladera (experimental)\n\n"
+printf "  • Update Setup       - Actualiza el repositorio y dependencias\n"
+printf "  • Abrir REPL         - Abre REPL interactivo del ESP8266\n"
+printf "  • Ver Logs           - Lee logs en tiempo real (NUEVO)\n"
+printf "  • Limpiar ESP8266    - Limpia archivos del ESP8266\n"
+printf "  • Deploy Blink       - Despliega app Blink (LED test)\n"
+printf "  • Deploy Gallinero   - Despliega app Gallinero (producción)\n"
+printf "  • Deploy Heladera    - Despliega app Heladera (experimental)\n"
+printf "  • Desplegar Prueba   - Deploy solo del archivo de test\n\n"
 printf "💡 Los shortcuts de deploy usan caché de IPs para conexión rápida.\n"
 printf "   Primera ejecución: escanea red (~10-30s)\n"
 printf "   Siguientes: usa IP cacheada (~2s)\n\n"
