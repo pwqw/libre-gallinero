@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""
+read_logs.py - Lee logs del ESP8266 en tiempo real via WebREPL
+
+Uso:
+    python3 tools/read_logs.py              # Auto-descubre IP
+    python3 tools/read_logs.py heladera     # Usa IP cacheada de heladera
+    python3 tools/read_logs.py 192.168.1.50 # IP específica
+"""
+
+import sys
+import time
+from pathlib import Path
+
+# Agregar directorio de herramientas al path
+script_dir = Path(__file__).parent.absolute()
+sys.path.insert(0, str(script_dir / 'common'))
+
+from webrepl_client import WebREPLClient
+from ip_cache import get_cached_ip
+
+# ANSI colors
+RED = '\033[31m'
+GREEN = '\033[32m'
+YELLOW = '\033[33m'
+BLUE = '\033[34m'
+MAGENTA = '\033[35m'
+CYAN = '\033[36m'
+NC = '\033[0m'  # No Color
+
+def main():
+    print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+    print(f"{CYAN}📡 ESP8266 Log Reader via WebREPL{NC}")
+    print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+
+    # Parsear argumentos
+    app_name = None
+    ip_arg = None
+
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        # Detectar si es IP o nombre de app
+        if '.' in arg and any(c.isdigit() for c in arg):
+            ip_arg = arg
+            print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
+        else:
+            app_name = arg
+            print(f"{BLUE}📦 App: {app_name}{NC}\n")
+
+    # Detectar directorio del proyecto
+    project_dir = script_dir.parent
+
+    # Cargar IP cacheada si existe
+    cached_ip = None
+    if not ip_arg and app_name:
+        cached_ip = get_cached_ip(app_name, verbose=True)
+        print()
+
+    # Conectar a WebREPL
+    auto_discover = not bool(ip_arg)
+    client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
+
+    # Configurar IP
+    if ip_arg:
+        client.ip = ip_arg
+    elif cached_ip:
+        client.ip = cached_ip
+
+    if not client.connect():
+        sys.exit(1)
+
+    print(f"\n{GREEN}✅ Conectado - Leyendo logs en tiempo real{NC}")
+    print(f"{YELLOW}   Presiona Ctrl-C para salir{NC}\n")
+    print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+
+    try:
+        # Interrumpir cualquier programa en ejecución
+        client.ws.send("\x03")  # Ctrl-C
+        time.sleep(0.3)
+
+        # Limpiar buffer
+        try:
+            client.ws.settimeout(0.2)
+            while True:
+                client.ws.recv()
+        except:
+            pass
+
+        # Configurar timeout más largo para lectura continua
+        client.ws.settimeout(1.0)
+
+        # Iniciar el programa y leer logs
+        print(f"{BLUE}🚀 Iniciando main.py...{NC}\n")
+        client.ws.send("import main\r\n")
+        time.sleep(0.5)
+        client.ws.send("main.main()\r\n")
+        time.sleep(0.3)
+
+        # Leer logs continuamente
+        while True:
+            try:
+                data = client.ws.recv()
+                if isinstance(data, bytes):
+                    text = data.decode('utf-8', errors='replace')
+                else:
+                    text = data
+
+                # Filtrar prompts de MicroPython
+                if text and text not in ['>>> ', '>>> \r\n', '\r\n>>> ']:
+                    # Colorear logs según módulo
+                    if '[main]' in text:
+                        print(f"{CYAN}{text}{NC}", end='')
+                    elif '[wifi]' in text:
+                        print(f"{BLUE}{text}{NC}", end='')
+                    elif '[ntp]' in text:
+                        print(f"{MAGENTA}{text}{NC}", end='')
+                    elif '[heladera]' in text:
+                        print(f"{GREEN}{text}{NC}", end='')
+                    elif '[gallinero]' in text:
+                        print(f"{YELLOW}{text}{NC}", end='')
+                    elif 'ERROR' in text or 'Error' in text:
+                        print(f"{RED}{text}{NC}", end='')
+                    else:
+                        print(text, end='')
+                    sys.stdout.flush()
+
+            except Exception as e:
+                # Timeout es normal, continuar
+                time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        print(f"\n\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{YELLOW}🛑 Deteniendo lectura de logs...{NC}")
+
+        # Detener programa en ESP8266
+        try:
+            client.ws.send("\x03")  # Ctrl-C
+            time.sleep(0.3)
+            print(f"{GREEN}✅ Programa detenido en ESP8266{NC}")
+            print(f"{BLUE}💡 El ESP8266 está ahora en el REPL{NC}")
+        except:
+            pass
+
+    finally:
+        client.close()
+        print(f"{GREEN}👋 Desconectado{NC}\n")
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{GREEN}👋 Cancelado por usuario{NC}")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n{RED}❌ Error: {e}{NC}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

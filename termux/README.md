@@ -198,12 +198,14 @@ El script automáticamente:
 
 ### Uso de Shortcuts (Termux Widget)
 Si instalaste Termux Widget, puedes usar los shortcuts:
-- **Update Setup**: Actualiza el repositorio y dependencias
-- **Deploy Blink**: Despliega app Blink (LED test) con caché de IP
-- **Deploy Gallinero**: Despliega app Gallinero (producción) con caché de IP
-- **Deploy Heladera**: Despliega app Heladera (experimental) con caché de IP
-- **Desplegar Prueba**: Deploy solo del archivo de test
-- **Clean**: Limpia archivos del ESP8266 de forma interactiva
+- **setup**: Actualiza el repositorio y dependencias
+- **deploy-blink**: Despliega app Blink (LED test) con caché de IP
+- **deploy-gallinero**: Despliega app Gallinero (producción) con caché de IP
+- **deploy-heladera**: Despliega app Heladera (experimental) con caché de IP
+- **deploy-test**: Deploy solo del archivo de test
+- **clean**: Limpia archivos del ESP8266 de forma interactiva
+- **logs**: Lee logs del ESP8266 en tiempo real (NUEVO)
+- **open-repl**: Abre REPL interactivo del ESP8266
 
 **Ventajas del caché de IPs:**
 - Primera ejecución: escanea red buscando ESP8266 en puerto 8266 (~10-30s)
