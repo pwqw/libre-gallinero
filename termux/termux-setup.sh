@@ -13,8 +13,20 @@ set -u  # Hacer que el script falle si se usa una variable no definida
 # 0. Iniciar
 cd "$HOME"
 
-# 1. Instalar las dependencias necesarias
-printf "\n📦 [1] Instalando dependencias necesarias... 🔧\n"
+# 1. Clonar el repositorio libre-gallinero (si no existe)
+printf "\n📥 [1] Clonando el repositorio libre-gallinero (si no existe)... 🔄\n"
+if [ ! -d "$HOME/libre-gallinero" ]; then
+  git clone https://github.com/pwqw/libre-gallinero.git "$HOME/libre-gallinero"
+fi
+
+# 2. Navegar al directorio del repositorio y actualizar (forzado)
+printf "\n\n🔄 [2] Actualizando el repositorio (forzado)... ⚡\n"
+cd "$HOME/libre-gallinero"
+git fetch --all
+git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
+
+# 3. Instalar las dependencias necesarias
+printf "\n\n📦 [3] Instalando dependencias necesarias... 🔧\n"
 pkg update -y
 pkg upgrade -y
 pkg install -y \
@@ -22,34 +34,19 @@ pkg install -y \
   python \
   termux-api termux-tools
 
-# 2. Clonar el repositorio libre-gallinero (si no existe)
-printf "\n\n📥 [2] Clonando el repositorio libre-gallinero (si no existe)... 🔄\n"
-if [ ! -d "$HOME/libre-gallinero" ]; then
-  git clone https://github.com/pwqw/libre-gallinero.git "$HOME/libre-gallinero"
-fi
-
-# 3. Navegar al directorio del repositorio
-printf "\n\n📂 [3] Navegando al directorio del repositorio... 🚀\n"
-cd "$HOME/libre-gallinero"
-
-# 4. Actualizar el repositorio (forzado)
-printf "\n\n🔄 [4] Actualizando el repositorio (forzado)... ⚡\n"
-git fetch --all
-git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
-
-# 5. Verificar que Python3 esté disponible
-printf "\n\n🐍 [5] Verificando Python3...\n"
+# 4. Verificar que Python3 esté disponible
+printf "\n\n🐍 [4] Verificando Python3...\n"
 if ! command -v python3 >/dev/null 2>&1; then
   echo "❌ Error: python3 no encontrado"
   exit 1
 fi
 echo "✅ Python3 encontrado: $(python3 --version)"
 
-# 6. Instalar dependencias Python para WebREPL
-printf "\n\n📦 [6] Instalando dependencias Python (websocket-client)...\n"
+# 5. Instalar dependencias Python para WebREPL
+printf "\n\n📦 [5] Instalando dependencias Python (websocket-client)...\n"
 pip install websocket-client
 
-# 7. Crear los accesos directos para Termux-Widget
+# 6. Crear los accesos directos para Termux-Widget
 printf "\n\n🔗 [7] Creando accesos directos para Termux-Widget...\n"
 if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
