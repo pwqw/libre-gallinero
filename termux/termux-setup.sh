@@ -55,21 +55,28 @@ if [ ! -d "$HOME/.shortcuts" ]; then
   mkdir -p "$HOME/.shortcuts"
 fi
 
+# Función helper para copiar shortcuts
+copy_shortcut() {
+  local src="$1"
+  local dest="$2"
+  if [ -f "$src" ]; then
+    cp -f "$src" "$dest"
+    chmod +x "$dest"
+    printf "   ✓ $dest\n"
+  else
+    printf "   ⚠️  No encontrado: $src (omitiendo)\n"
+  fi
+}
+
 # Shortcuts originales
-cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy.sh" "$HOME/.shortcuts/Deploy ESP8266"
-chmod +x "$HOME/.shortcuts/Deploy ESP8266"
-cp -f "$HOME/libre-gallinero/termux/shortcuts/setup.sh" "$HOME/.shortcuts/Update Setup"
-chmod +x "$HOME/.shortcuts/Update Setup"
-cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy-test.sh" "$HOME/.shortcuts/Desplegar Prueba"
-chmod +x "$HOME/.shortcuts/Desplegar Prueba"
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy.sh" "$HOME/.shortcuts/Deploy ESP8266"
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/setup.sh" "$HOME/.shortcuts/Update Setup"
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-test.sh" "$HOME/.shortcuts/Desplegar Prueba"
 
 # Nuevos shortcuts por app (con caché de IPs)
-cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy-blink.sh" "$HOME/.shortcuts/Deploy Blink"
-chmod +x "$HOME/.shortcuts/Deploy Blink"
-cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy-gallinero.sh" "$HOME/.shortcuts/Deploy Gallinero"
-chmod +x "$HOME/.shortcuts/Deploy Gallinero"
-cp -f "$HOME/libre-gallinero/termux/shortcuts/deploy-heladera.sh" "$HOME/.shortcuts/Deploy Heladera"
-chmod +x "$HOME/.shortcuts/Deploy Heladera"
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-blink.sh" "$HOME/.shortcuts/Deploy Blink"
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-gallinero.sh" "$HOME/.shortcuts/Deploy Gallinero"
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-heladera.sh" "$HOME/.shortcuts/Deploy Heladera"
 
 printf "\n\n✅ ¡Setup completo!\n\n"
 printf "📋 Shortcuts instalados en Termux Widget:\n"
