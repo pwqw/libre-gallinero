@@ -517,37 +517,21 @@ class WebREPLClient:
 
     def _create_directory_structure(self, remote_name):
         """
-        Crea la estructura de directorios necesaria para un archivo remoto.
+        DEPRECADO - WebREPL crea directorios automáticamente.
+
+        El protocolo binario WebREPL crea los directorios necesarios
+        automáticamente cuando el filename contiene "/".
+
+        NO usar comandos de texto (execute) aquí porque interfiere
+        con el protocolo binario y causa "Respuesta muy corta".
 
         Args:
             remote_name: Nombre del archivo remoto (ej: "gallinero/app.py")
 
         Returns:
-            bool: True si se crearon los directorios o ya existían
+            bool: True (siempre, los directorios se crean automáticamente)
         """
-        remote_path = Path(remote_name)
-        if len(remote_path.parts) <= 1:
-            return True  # No hay subdirectorios
-
-        # Construir lista de directorios a crear
-        dirs_to_create = []
-        current_path = ""
-        for part in remote_path.parts[:-1]:  # Todos excepto el nombre del archivo
-            current_path = f"{current_path}/{part}" if current_path else part
-            dirs_to_create.append(current_path)
-
-        # Crear cada directorio vía REPL
-        for dir_path in dirs_to_create:
-            cmd = f"""
-import os
-try:
-    os.mkdir('{dir_path}')
-except OSError as e:
-    if e.args[0] != 17:  # EEXIST
-        raise
-"""
-            self.execute(cmd, timeout=2)
-
+        # NO HACER NADA - WebREPL lo maneja automáticamente
         return True
 
     def _ensure_connection(self):

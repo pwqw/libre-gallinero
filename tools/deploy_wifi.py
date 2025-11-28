@@ -225,9 +225,27 @@ def main():
     if not app_name:
         app_name = 'blink'
         print(f"{BLUE}📦 Usando app por defecto: blink{NC}\n")
-    
+
+    # Crear directorios necesarios ANTES de usar protocolo binario
+    # Esto se hace UNA VEZ para evitar interferir con el protocolo binario
+    if app_name:
+        print(f"{BLUE}📁 Creando estructura de directorios...{NC}")
+        try:
+            mkdir_cmd = f"""
+import os
+try:
+    os.mkdir('{app_name}')
+except OSError as e:
+    if e.args[0] == 17:  # EEXIST
+        pass
+"""
+            client.execute(mkdir_cmd, timeout=2)
+            print(f"{GREEN}✅ Directorio '{app_name}/' listo{NC}\n")
+        except Exception as e:
+            print(f"{YELLOW}⚠️  No se pudo crear directorio (puede ya existir){NC}\n")
+
     print(f"\n📤 Iniciando upload de archivos...\n")
-    
+
     # Obtener archivos a subir (incluyendo app si se especificó)
     files_to_upload = get_files_to_upload(project_dir, app_name=app_name)
     
