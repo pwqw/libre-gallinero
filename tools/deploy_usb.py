@@ -21,6 +21,12 @@ import subprocess
 import glob
 from pathlib import Path
 
+# Agregar tools/common al path
+script_dir = Path(__file__).parent.absolute()
+sys.path.insert(0, str(script_dir))
+
+from common.env_updater import update_env_for_app, cleanup_temp_env
+
 # Colores para terminal
 RED = '\033[0;31m'
 GREEN = '\033[0;32m'
@@ -189,16 +195,18 @@ def get_files_to_upload_usb(project_root, app_name=None):
 def upload_files(port, project_root, app_name=None):
     """Sube archivos desde src/ a la placa ESP8266 usando ampy CLI"""
     src_dir = project_root / 'src'
-    
+
     if not src_dir.exists():
         print(f"{RED}⛔ No se encontró el directorio src/{NC}")
         return False
-    
+
     # Si no se especificó app, usar blink por defecto
     if not app_name:
         app_name = 'blink'
         print(f"{BLUE}📦 Usando app por defecto: blink{NC}\n")
-    
+    else:
+        print(f"{BLUE}📦 Desplegando app: {app_name}{NC}\n")
+
     print(f"{BLUE}📤 Subiendo archivos desde src/ a la placa ESP8266...{NC}\n")
     
     # Obtener lista de archivos a subir
@@ -252,7 +260,27 @@ def upload_files(port, project_root, app_name=None):
         print(f"   Exitosos: {success_count}")
         if error_count > 0:
             print(f"   {RED}Errores: {error_count}{NC}")
-        
+
+        # Copiar y actualizar .env con la app correcta
+        print(f"\n{BLUE}📄 Actualizando .env en ESP8266...{NC}")
+        try:
+            temp_env = update_env_for_app(project_root, app_name)
+            result = subprocess.run(
+                ['ampy', '--port', port, 'put', str(temp_env), '.env'],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                print(f"{GREEN}   ✅ .env actualizado con APP={app_name}{NC}")
+            else:
+                print(f"{RED}   ⚠️  Error al subir .env: {result.stderr}{NC}")
+                error_count += 1
+        except Exception as e:
+            print(f"{RED}   ⚠️  Error al subir .env: {e}{NC}")
+            error_count += 1
+        finally:
+            cleanup_temp_env(project_root)
+
         return error_count == 0
         
     except Exception as e:

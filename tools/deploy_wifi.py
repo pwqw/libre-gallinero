@@ -41,6 +41,7 @@ sys.path.insert(0, str(script_dir))
 
 from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
 from common.ip_cache import get_cached_ip, save_cached_ip
+from common.env_updater import update_env_for_app, cleanup_temp_env
 
 
 def get_files_to_upload(project_dir, app_name=None):
@@ -256,15 +257,18 @@ def main():
         # Delay entre archivos para dar tiempo al ESP8266 a procesar
         time.sleep(0.5)
     
-    # Copiar .env si existe en el repositorio
-    env_path = Path(str(project_dir)) / '.env'
-    if env_path.exists():
-        print(f"{BLUE}📄 Copiando .env al ESP8266...{NC}")
-        if client.send_file(str(env_path), '.env'):
+    # Copiar y actualizar .env con la app correcta
+    print(f"\n{BLUE}📄 Actualizando .env en ESP8266...{NC}")
+    try:
+        temp_env = update_env_for_app(project_dir, app_name)
+        if client.send_file(str(temp_env), '.env'):
+            print(f"{GREEN}   ✅ .env actualizado con APP={app_name}{NC}")
             success += 1
         else:
             failed += 1
-        print()
+    finally:
+        cleanup_temp_env(project_dir)
+    print()
     
     # Verificación post-deploy
     verify_deploy(client)
