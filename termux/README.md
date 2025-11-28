@@ -203,6 +203,7 @@ Si instalaste Termux Widget, puedes usar los shortcuts:
 - **Deploy Gallinero**: Despliega app Gallinero (producción) con caché de IP
 - **Deploy Heladera**: Despliega app Heladera (experimental) con caché de IP
 - **Desplegar Prueba**: Deploy solo del archivo de test
+- **Clean**: Limpia archivos del ESP8266 de forma interactiva
 
 **Ventajas del caché de IPs:**
 - Primera ejecución: escanea red buscando ESP8266 en puerto 8266 (~10-30s)
