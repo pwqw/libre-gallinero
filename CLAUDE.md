@@ -57,6 +57,9 @@ python3 tools/open_repl.py                   # Open interactive REPL
 # Platform-specific wrappers (optional, just call tools/ directly)
 ./pc/deploy.sh gallinero                     # PC wrapper → tools/deploy_usb.py
 python3 pc/setup_webrepl.py                  # PC wrapper → tools/setup_initial.py
+
+# Termux shortcuts (Android/mobile)
+./termux/clean.sh                            # Cleanup tool shortcut
 ```
 
 ### Configuration

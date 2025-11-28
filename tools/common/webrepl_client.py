@@ -601,19 +601,19 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                     return False
 
             # Dar más tiempo al ESP8266 para procesar, especialmente en WiFi lento (Termux)
-            time.sleep(1.5)
+            time.sleep(2.0)  # AUMENTADO: más tiempo para procesamiento inicial
 
             response = ""
             try:
                 start_time = time.time()
-                # AUMENTADO: Timeout de 15 segundos para redes WiFi lentas (Termux/móvil)
-                timeout = 15
+                # AUMENTADO: Timeout de 20 segundos para redes WiFi lentas (Termux/móvil)
+                timeout = 20
                 recv_attempts = 0
-                max_empty_attempts = 5  # Máximo de intentos vacíos antes de dar por terminado
+                max_empty_attempts = 8  # AUMENTADO: Más intentos vacíos para WiFi lento
 
                 while time.time() - start_time < timeout:
                     try:
-                        self.ws.settimeout(2.0)  # AUMENTADO: 2 segundos por recv (antes 1)
+                        self.ws.settimeout(3.0)  # AUMENTADO: 3 segundos por recv para WiFi lento
                         data = self.ws.recv()
                         recv_attempts += 1
 
@@ -628,7 +628,7 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
 
                         # Reset contador si recibimos datos
                         if data:
-                            max_empty_attempts = 5
+                            max_empty_attempts = 8  # Reset al valor inicial
 
                     except websocket.WebSocketTimeoutException:
                         # Continuar intentando hasta el timeout total
@@ -642,7 +642,7 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                         logger.warning(f"Error durante recv: {recv_error}")
                         break
 
-                    time.sleep(0.15)
+                    time.sleep(0.2)  # Ligeramente más tiempo entre intentos
 
             except websocket.WebSocketTimeoutException:
                 pass
@@ -660,17 +660,30 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
                 logger.error(f"Error detectado durante upload de {remote_name}: {response[:300]}")
                 return False
 
-            # Require explicit confirmation
+            # Require explicit confirmation (más flexible para WiFi lento)
             upload_confirmed = False
-            if "Uploaded" in response and remote_name in response:
+
+            # Método 1: Confirmación explícita "Uploaded"
+            if "Uploaded" in response:
                 upload_confirmed = True
-            elif ">>>" in response and len(response) > 10:
-                # Confirmación implícita (prompt retornó)
+                logger.debug("Confirmación por mensaje 'Uploaded'")
+            # Método 2: Prompt retornó (completó el comando)
+            elif ">>>" in response and len(response) > 5:
                 upload_confirmed = True
+                logger.debug("Confirmación por prompt '>>>'")
+            # Método 3: Si la respuesta está vacía o muy corta pero no hay error, intentar verificación directa
+            elif len(response) < 100 and not any(err in response for err in ["Traceback", "Error:"]):
+                # WiFi muy lento - saltar directamente a verificación
+                if self.verbose:
+                    print(f"{YELLOW}   ⚠️  Respuesta incompleta ({len(response)} bytes), intentando verificación...{NC}")
+                logger.warning(f"Respuesta incompleta para {remote_name}, saltando a verificación. Respuesta: {response[:200]}")
+                upload_confirmed = True  # Confiar en verificación posterior
             else:
                 if self.verbose:
                     print(f"{RED}   ❌ Sin confirmación de upload{NC}")
                     print(f"{YELLOW}      Respuesta recibida: {len(response)} caracteres{NC}")
+                    if response:
+                        print(f"{YELLOW}      Primeros 100 chars: {response[:100]}{NC}")
                 logger.error(f"No se recibió confirmación de upload para {remote_name}. Respuesta: {response[:200]}")
                 return False
 
@@ -678,8 +691,8 @@ print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
             # Esto detecta fallos silenciosos que ocurren en WiFi inestable (Termux)
             if upload_confirmed:
                 try:
-                    # Dar tiempo al filesystem a sincronizar
-                    time.sleep(0.3)
+                    # Dar más tiempo al filesystem a sincronizar (especialmente en WiFi lento)
+                    time.sleep(0.5)
 
                     # Verificar existencia y tamaño del archivo
                     verify_code = f"""
@@ -691,13 +704,13 @@ except Exception as e:
     print(f'VERIFY_ERROR:{{e}}')
 """
                     self.ws.send(verify_code + '\r\n')
-                    time.sleep(0.5)
+                    time.sleep(0.8)  # AUMENTADO: más tiempo para procesar en WiFi lento
 
                     verify_response = ""
                     verify_start = time.time()
-                    while time.time() - verify_start < 5:
+                    while time.time() - verify_start < 8:  # AUMENTADO: 8 segundos para verificación
                         try:
-                            self.ws.settimeout(1.0)
+                            self.ws.settimeout(2.0)  # AUMENTADO: 2 segundos por recv
                             data = self.ws.recv()
                             if isinstance(data, bytes):
                                 verify_response += data.decode('utf-8', errors='ignore')
@@ -706,6 +719,9 @@ except Exception as e:
 
                             if 'VERIFY_OK' in verify_response or 'VERIFY_ERROR' in verify_response or '>>>' in verify_response:
                                 break
+                        except websocket.WebSocketTimeoutException:
+                            # Continuar intentando hasta timeout
+                            continue
                         except:
                             break
 
