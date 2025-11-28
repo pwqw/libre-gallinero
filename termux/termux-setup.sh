@@ -66,7 +66,6 @@ copy_shortcut() {
 }
 
 # Shortcuts originales
-copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy.sh" "$HOME/.shortcuts/Deploy ESP8266"
 copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/setup.sh" "$HOME/.shortcuts/Update Setup"
 copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-test.sh" "$HOME/.shortcuts/Desplegar Prueba"
 
@@ -84,8 +83,7 @@ printf "  • Update Setup     - Actualiza el repositorio y dependencias\n"
 printf "  • Abrir REPL       - Abre REPL interactivo del ESP8266\n"
 printf "  • Deploy Blink     - Despliega app Blink (LED test)\n"
 printf "  • Deploy Gallinero - Despliega app Gallinero (producción)\n"
-printf "  • Deploy Heladera  - Despliega app Heladera (experimental)\n"
-printf "  • Deploy ESP8266   - Deploy manual (especificar app)\n\n"
+printf "  • Deploy Heladera  - Despliega app Heladera (experimental)\n\n"
 printf "💡 Los shortcuts de deploy usan caché de IPs para conexión rápida.\n"
 printf "   Primera ejecución: escanea red (~10-30s)\n"
 printf "   Siguientes: usa IP cacheada (~2s)\n\n"

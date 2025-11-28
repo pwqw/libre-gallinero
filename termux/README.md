@@ -202,7 +202,6 @@ Si instalaste Termux Widget, puedes usar los shortcuts:
 - **Deploy Blink**: Despliega app Blink (LED test) con caché de IP
 - **Deploy Gallinero**: Despliega app Gallinero (producción) con caché de IP
 - **Deploy Heladera**: Despliega app Heladera (experimental) con caché de IP
-- **Deploy ESP8266**: Deploy manual (especificar app)
 - **Desplegar Prueba**: Deploy solo del archivo de test
 
 **Ventajas del caché de IPs:**
