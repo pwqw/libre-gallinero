@@ -38,6 +38,11 @@ python3 tools/deploy_wifi.py heladera        # Deploy heladera app
 python3 tools/deploy_wifi.py blink           # Re-deploy blink
 python3 tools/deploy_wifi.py heladera 192.168.1.100  # Specify IP
 
+# Change app with IP caching (faster, recommended for Termux/mobile)
+python3 tools/deploy_app.py gallinero        # Uses cached IP from previous deploy
+python3 tools/deploy_app.py heladera         # First run scans network, then caches IP
+python3 tools/deploy_app.py blink            # Each app has separate IP cache
+
 # Change app via USB (faster for local development)
 python3 tools/deploy_usb.py gallinero        # Deploy via USB
 python3 tools/deploy_usb.py blink            # Deploy via USB

@@ -47,9 +47,11 @@ python3 tools/deploy_wifi.py
 vim src/main.py
 
 # Deploy automático
-python3 tools/deploy_wifi.py  # WiFi (sin cables)
+python3 tools/deploy_wifi.py gallinero  # WiFi (sin cables)
+# O con caché de IPs (más rápido, ideal para móvil)
+python3 tools/deploy_app.py gallinero   # WiFi + caché de IP
 # O
-python3 tools/deploy_usb.py   # USB (más rápido)
+python3 tools/deploy_usb.py gallinero   # USB (más rápido)
 ```
 
 ### Instalación rápida en Termux (Android)

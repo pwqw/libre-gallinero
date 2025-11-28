@@ -40,6 +40,7 @@ script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 
 from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
+from common.ip_cache import get_cached_ip, save_cached_ip
 
 
 def get_files_to_upload(project_dir, app_name=None):
@@ -181,14 +182,25 @@ def main():
         except:
             pass
     
+    # Cargar IP cacheada si existe y no se especificó IP manualmente
+    # Esto se hace ANTES de crear el cliente para poder pasarla al constructor
+    cached_ip_pre = None
+    if not ip_arg and app_name:
+        cached_ip_pre = get_cached_ip(app_name, verbose=True)
+        if cached_ip_pre:
+            print()
+
     # Conectar a WebREPL (usar IP si se proporcionó, sino autodiscovery)
     auto_discover = not bool(ip_arg)
     client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
-    
-    # Si se proporcionó IP, usarla directamente
+
+    # Si se proporcionó IP, usarla directamente (tiene prioridad sobre caché)
     if ip_arg:
         client.ip = ip_arg
-    
+    elif cached_ip_pre:
+        # Intentar con la IP cacheada primero
+        client.ip = cached_ip_pre
+
     if not client.connect():
         sys.exit(1)
     
@@ -237,17 +249,22 @@ def main():
     
     # Verificación post-deploy
     verify_deploy(client)
-    
+
+    # Guardar IP en caché si el deploy fue exitoso
+    if failed == 0 and app_name and client.ip:
+        save_cached_ip(app_name, client.ip, verbose=True)
+        print()
+
     # Cerrar conexión
     client.close()
-    
+
     # Resumen
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"{GREEN}✅ Exitosos: {success}{NC}")
     if failed > 0:
         print(f"{RED}❌ Fallidos: {failed}{NC}")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-    
+
     if failed > 0:
         print(f"{RED}⚠️  Deploy completado con errores{NC}\n")
         sys.exit(1)

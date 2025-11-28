@@ -236,26 +236,40 @@ def find_esp8266_in_network(password, port=8266, verbose=True, max_hosts=100):
     return found_ip
 
 
-def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True):
+def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True, cached_ip=None):
     """
     Busca ESP8266 con WebREPL usando estrategia inteligente:
+    0. Intenta IP cacheada (si existe)
     1. Intenta IP del .env (si existe y no es 192.168.4.1)
     2. Obtiene IP local y escanea ese rango
     3. Usa 192.168.4.1 como fallback hardcodeado (hotspot)
-    
+
     Args:
         config_ip: IP desde configuración (.env)
         password: Password de WebREPL
         port: Puerto WebREPL (default: 8266)
         verbose: Si True, muestra mensajes informativos
-    
+        cached_ip: IP cacheada para la app actual
+
     Returns:
         str: IP del ESP8266 encontrado, o None si no se encuentra
     """
+    # 0. Intentar IP cacheada primero (más rápido)
+    if cached_ip and cached_ip != '192.168.4.1':
+        if verbose:
+            print(f"{BLUE}[0/4] Probando IP cacheada: {cached_ip}{NC}")
+        if test_webrepl_connection(cached_ip, password, port, timeout=2):
+            if verbose:
+                print(f"{GREEN}✅ ESP8266 encontrado en: {cached_ip} (desde caché){NC}\n")
+            return cached_ip
+        else:
+            if verbose:
+                print(f"{YELLOW}⚠️  IP cacheada no responde, continuando búsqueda...{NC}\n")
+
     # 1. Intentar IP del .env si existe y no es 192.168.4.1
     if config_ip and config_ip != '192.168.4.1':
         if verbose:
-            print(f"{BLUE}[1/3] Probando IP del .env: {config_ip}{NC}")
+            print(f"{BLUE}[1/4] Probando IP del .env: {config_ip}{NC}")
         if test_webrepl_connection(config_ip, password, port, timeout=2):
             if verbose:
                 print(f"{GREEN}✅ ESP8266 encontrado en: {config_ip} (desde .env){NC}\n")
@@ -263,12 +277,12 @@ def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True):
         else:
             if verbose:
                 print(f"{YELLOW}⚠️  IP del .env no responde, continuando búsqueda...{NC}\n")
-    
+
     # 2. Obtener IP local y escanear ese rango
     local_ip = get_local_ip()
     if local_ip:
         if verbose:
-            print(f"{BLUE}[2/3] IP local detectada: {local_ip}{NC}")
+            print(f"{BLUE}[2/4] IP local detectada: {local_ip}{NC}")
             print(f"{BLUE}🔍 Escaneando rango basado en IP local...{NC}\n")
         found_ip = find_esp8266_in_network(password, port, verbose)
         if found_ip:
@@ -276,10 +290,10 @@ def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True):
     else:
         if verbose:
             print(f"{YELLOW}⚠️  No se pudo obtener IP local, saltando escaneo de red{NC}\n")
-    
+
     # 3. Fallback: 192.168.4.1 (hotspot)
     if verbose:
-        print(f"{BLUE}[3/3] Probando fallback: 192.168.4.1 (hotspot){NC}")
+        print(f"{BLUE}[3/4] Probando fallback: 192.168.4.1 (hotspot){NC}")
     if test_webrepl_connection('192.168.4.1', password, port, timeout=2):
         if verbose:
             print(f"{GREEN}✅ ESP8266 encontrado en: 192.168.4.1 (hotspot){NC}\n")
