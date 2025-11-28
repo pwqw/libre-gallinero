@@ -337,74 +337,67 @@ class TestConnectWifi:
         # Debería decodificar bytes a string
         mock_wlan.connect.assert_called_once_with('test_ssid', 'test_password')
     
-    @pytest.mark.timeout(10)
     @patch('time.sleep')
+    @patch('src.wifi._start_ap_fallback')
+    @patch('src.wifi._reset_wlan')
     @patch('src.wifi._get_wlan')
-    def test_connect_wifi_handles_connection_error(self, mock_get_wlan, mock_sleep):
+    def test_connect_wifi_handles_connection_error(self, mock_get_wlan, mock_reset_wlan, mock_start_ap, mock_sleep):
         from src.wifi import connect_wifi
         
         mock_wlan = MagicMock()
+        # Siempre retorna False para simular que nunca se conecta
         mock_wlan.isconnected.return_value = False
-        mock_wlan.status.return_value = 1000  # STAT_IDLE
+        mock_wlan.status.return_value = 200  # CONNECT_FAIL
         mock_wlan.connect.side_effect = Exception("Connection error")
+        mock_wlan.ifconfig.return_value = ("0.0.0.0", "255.255.255.0", "192.168.0.1", "8.8.8.8")
         mock_get_wlan.return_value = mock_wlan
+        mock_reset_wlan.return_value = mock_wlan  # _reset_wlan retorna el mismo mock
         
         cfg = {
             'WIFI_SSID': 'test_ssid',
             'WIFI_PASSWORD': 'test_password'
         }
         
-        # Debería continuar intentando (pero limitamos con timeout en el test)
-        # En un test real, esto entraría en un loop infinito, así que mockeamos el comportamiento
-        # Este test verifica que maneja la excepción sin crashear
-        # Limitamos el loop con un side_effect que rompe después de un intento
-        call_count = {'count': 0}
-        def sleep_side_effect(seconds):
-            call_count['count'] += 1
-            if call_count['count'] >= 2:
-                raise StopIteration("Test limit")
+        # Ahora el código tiene límite de 3 intentos, no necesita hacks
+        result = connect_wifi(cfg)
         
-        mock_sleep.side_effect = sleep_side_effect
-        
-        try:
-            connect_wifi(cfg)
-        except StopIteration:
-            pass
+        # Debería retornar False después de 3 intentos fallidos
+        assert result is False
+        # Debería haber intentado conectar 3 veces
+        assert mock_wlan.connect.call_count == 3
+        # Debería haber activado el AP como fallback
+        mock_start_ap.assert_called_once_with(cfg)
     
-    @pytest.mark.timeout(10)
     @patch('time.sleep')
+    @patch('src.wifi._start_ap_fallback')
+    @patch('src.wifi._reset_wlan')
     @patch('src.wifi._get_wlan')
-    def test_connect_wifi_wrong_password_status(self, mock_get_wlan, mock_sleep):
+    def test_connect_wifi_wrong_password_status(self, mock_get_wlan, mock_reset_wlan, mock_start_ap, mock_sleep):
         from src.wifi import connect_wifi
         
         mock_wlan = MagicMock()
+        # Siempre retorna False para simular que nunca se conecta
         mock_wlan.isconnected.return_value = False
-        mock_wlan.status.side_effect = [1000, 202]  # STAT_IDLE, WRONG_PASSWORD
+        # Simular WRONG_PASSWORD en todos los intentos
+        mock_wlan.status.return_value = 202  # WRONG_PASSWORD
+        mock_wlan.ifconfig.return_value = ("0.0.0.0", "255.255.255.0", "192.168.0.1", "8.8.8.8")
         mock_get_wlan.return_value = mock_wlan
+        mock_reset_wlan.return_value = mock_wlan  # _reset_wlan retorna el mismo mock
         
         cfg = {
             'WIFI_SSID': 'test_ssid',
             'WIFI_PASSWORD': 'wrong_password'
         }
         
-        # Debería detectar el error y continuar intentando
-        # Limitamos el loop con un side_effect que rompe después de un intento
-        call_count = {'count': 0}
-        def sleep_side_effect(seconds):
-            call_count['count'] += 1
-            if call_count['count'] >= 2:
-                raise StopIteration("Test limit")
+        # Ahora el código tiene límite de 3 intentos
+        result = connect_wifi(cfg)
         
-        mock_sleep.side_effect = sleep_side_effect
-        
-        try:
-            connect_wifi(cfg)
-        except StopIteration:
-            pass
-        
-        # Este test verifica que detecta el status de error
-        # En la implementación real, esto entraría en un loop
-        # Aquí solo verificamos que el código maneja el status 202
+        # Debería retornar False después de 3 intentos fallidos
+        assert result is False
+        # Debería haber intentado conectar 3 veces
+        assert mock_wlan.connect.call_count == 3
+        # Debería haber activado el AP como fallback
+        mock_start_ap.assert_called_once_with(cfg)
     
     @pytest.mark.timeout(10)
     @patch('time.sleep')
@@ -593,41 +586,35 @@ class TestConnectWifiApFallback:
         mock_start_ap.assert_called_once_with(cfg)
         mock_wlan.connect.assert_not_called()
     
-    @pytest.mark.timeout(10)
     @patch('time.sleep')
     @patch('src.wifi._start_ap_fallback')
+    @patch('src.wifi._reset_wlan')
     @patch('src.wifi._get_wlan')
-    def test_connect_wifi_3_attempts_fails_activates_ap(self, mock_get_wlan, mock_start_ap, mock_sleep):
+    def test_connect_wifi_3_attempts_fails_activates_ap(self, mock_get_wlan, mock_reset_wlan, mock_start_ap, mock_sleep):
         from src.wifi import connect_wifi
         
         mock_wlan = MagicMock()
+        # Siempre retorna False para simular que nunca se conecta
         mock_wlan.isconnected.return_value = False
         mock_wlan.status.return_value = 201  # NO_AP_FOUND
+        mock_wlan.ifconfig.return_value = ("0.0.0.0", "255.255.255.0", "192.168.0.1", "8.8.8.8")
         mock_get_wlan.return_value = mock_wlan
+        mock_reset_wlan.return_value = mock_wlan  # _reset_wlan retorna el mismo mock
         
         cfg = {
             'WIFI_SSID': 'test_ssid',
             'WIFI_PASSWORD': 'test_password'
         }
         
-        # Limitar el loop para que falle después de 3 intentos
-        call_count = {'count': 0}
-        def sleep_side_effect(seconds):
-            call_count['count'] += 1
-            if call_count['count'] >= 3:
-                raise StopIteration("Test limit")
+        # Ahora el código tiene límite real de 3 intentos
+        result = connect_wifi(cfg)
         
-        mock_sleep.side_effect = sleep_side_effect
-        
-        try:
-            result = connect_wifi(cfg)
-        except StopIteration:
-            # Simular que llegamos al intento 3
-            # En la implementación real, después de 3 intentos se activa el AP
-            pass
-        
-        # Verificar que se intentó conectar
-        assert mock_wlan.connect.called
+        # Debería retornar False después de 3 intentos fallidos
+        assert result is False
+        # Debería haber intentado conectar exactamente 3 veces
+        assert mock_wlan.connect.call_count == 3
+        # Debería haber activado el AP como fallback
+        mock_start_ap.assert_called_once_with(cfg)
 
 
 class TestMonitorWifi:

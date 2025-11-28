@@ -191,19 +191,25 @@ class TestMain:
     @patch('deploy_wifi.WebREPLClient')
     @patch('deploy_wifi.get_files_to_upload')
     @patch('deploy_wifi.verify_deploy')
+    @patch('deploy_wifi.update_env_for_app')
     @patch('deploy_wifi.subprocess.run')
     @patch('deploy_wifi.Path')
     @patch('os.chdir')
     @patch('sys.exit')
     @patch('builtins.input', return_value='n')
     def test_main_no_files_found(self, mock_input, mock_exit, mock_chdir, mock_path_class,
-                                  mock_subprocess, mock_verify, mock_get_files, mock_client_class, mock_sleep, mock_validate):
+                                  mock_subprocess, mock_update_env, mock_verify, mock_get_files, mock_client_class, mock_sleep, mock_validate):
         """Test que main() sale si no hay archivos para subir"""
         # Setup
         mock_get_files.return_value = []
         mock_client = Mock()
         mock_client.connect.return_value = True
         mock_client_class.return_value = mock_client
+        
+        # Mock update_env_for_app para retornar un Path mockeado
+        mock_temp_env = Mock()
+        mock_temp_env.__str__ = lambda self: '/project/.env.tmp'
+        mock_update_env.return_value = mock_temp_env
         
         # Mock Path - necesitamos manejar Path(__file__) y Path(project_dir / '.git')
         project_dir = Path('/project')

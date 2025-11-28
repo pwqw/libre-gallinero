@@ -149,13 +149,14 @@ def connect_wifi(cfg, wdt_callback=None):
     
     log(f"Red: {repr(ssid)} (oculta: {hidden})")
     
+    max_attempts = 3
     attempt = 0
     status_map = {1000: 'IDLE', 1001: 'CONNECTING', 1010: 'GOT_IP',
                   202: 'WRONG_PASSWORD', 201: 'NO_AP_FOUND', 200: 'CONNECT_FAIL'}
     
-    while True:
+    while attempt < max_attempts:
         attempt += 1
-        log(f"--- Intento #{attempt} ---")
+        log(f"--- Intento #{attempt}/{max_attempts} ---")
         
         if wdt_callback:
             try:
@@ -235,25 +236,26 @@ def connect_wifi(cfg, wdt_callback=None):
         status_name = status_map.get(status, f'UNKNOWN({status})')
         log(f"✗ Intento #{attempt} falló - {status_name}")
         
-        # Después de 3 intentos fallidos, activar AP como fallback
-        if attempt >= 3:
-            log("⚠ No se pudo conectar después de 3 intentos")
-            log("📡 Activando hotspot de fallback...")
-            _start_ap_fallback(cfg)
-            return False
-        
-        if (status in [202, 201, 200] and attempt % 3 == 0) or \
-           (wlan.isconnected() and attempt > 1):
-            log("🔄 Reset WiFi...")
-            wlan = _reset_wlan()
-            time.sleep(1)
-        
-        if wdt_callback:
-            try:
-                wdt_callback()
-            except:
-                pass
-        time.sleep(5)
+        # Si aún quedan intentos, continuar
+        if attempt < max_attempts:
+            if (status in [202, 201, 200] and attempt % 3 == 0) or \
+               (wlan.isconnected() and attempt > 1):
+                log("🔄 Reset WiFi...")
+                wlan = _reset_wlan()
+                time.sleep(1)
+            
+            if wdt_callback:
+                try:
+                    wdt_callback()
+                except:
+                    pass
+            time.sleep(5)
+    
+    # Si llegamos aquí, todos los intentos fallaron
+    log("⚠ No se pudo conectar después de 3 intentos")
+    log("📡 Activando hotspot de fallback...")
+    _start_ap_fallback(cfg)
+    return False
 
 def monitor_wifi(check_interval=30):
     import time
