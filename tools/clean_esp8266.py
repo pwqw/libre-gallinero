@@ -139,8 +139,8 @@ def interactive_clean(client):
                     print(f"{BLUE}Cancelado{NC}")
         elif choice == '4':
             print(f"{RED}⚠️  PELIGRO: Esto eliminará TODOS los archivos del ESP8266{NC}")
-            confirm = input(f"{RED}¿Estás ABSOLUTAMENTE seguro? Escribe 'BORRAR TODO': {NC}").strip()
-            if confirm == 'BORRAR TODO':
+            confirm = input(f"{RED}¿Borrar TODO? [s/N]: {NC}").strip().lower()
+            if confirm == 's':
                 format_all(client)
             else:
                 print(f"{BLUE}Cancelado{NC}")
