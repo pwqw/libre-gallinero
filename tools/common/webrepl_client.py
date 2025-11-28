@@ -12,6 +12,7 @@ import socket
 import ipaddress
 import threading
 import logging
+import struct
 from pathlib import Path
 
 # Colores ANSI
@@ -29,6 +30,11 @@ logger.setLevel(logging.INFO)
 # Según documentación MicroPython 1.19 ESP8266: archivos >16KB pueden causar problemas de memoria
 # Usamos 8KB como límite conservador para evitar problemas de memoria
 MAX_FILE_SIZE = 8 * 1024  # 8KB - límite conservador para ESP8266
+
+# Protocolo binario WebREPL (según webrepl_cli.py oficial)
+WEBREPL_REQ_S = "<2sBBQLH64s"  # Formato del request struct
+WEBREPL_PUT_FILE = 1  # Opcode para PUT file
+WEBREPL_GET_FILE = 2  # Opcode para GET file
 
 
 def validate_file_size(file_path, max_size=None):
@@ -463,9 +469,66 @@ class WebREPLClient:
             logger.error(f"Error de conexión a {url}: {e}", exc_info=True)
             return False
     
+    def _read_webrepl_resp(self):
+        """
+        Lee respuesta del protocolo binario WebREPL.
+        Formato: 4 bytes (2 bytes signature "WB" + 2 bytes status code)
+
+        Returns:
+            int: Código de estado (0 = éxito)
+
+        Raises:
+            AssertionError: Si la signature no es "WB"
+        """
+        data = self.ws.recv()
+        if len(data) < 4:
+            raise ValueError(f"Respuesta WebREPL muy corta: {len(data)} bytes")
+
+        sig, code = struct.unpack("<2sH", data[:4])
+        if sig != b"WB":
+            raise AssertionError(f"Signature incorrecta: esperado b'WB', recibido {sig}")
+
+        return code
+
+    def _create_directory_structure(self, remote_name):
+        """
+        Crea la estructura de directorios necesaria para un archivo remoto.
+
+        Args:
+            remote_name: Nombre del archivo remoto (ej: "gallinero/app.py")
+
+        Returns:
+            bool: True si se crearon los directorios o ya existían
+        """
+        remote_path = Path(remote_name)
+        if len(remote_path.parts) <= 1:
+            return True  # No hay subdirectorios
+
+        # Construir lista de directorios a crear
+        dirs_to_create = []
+        current_path = ""
+        for part in remote_path.parts[:-1]:  # Todos excepto el nombre del archivo
+            current_path = f"{current_path}/{part}" if current_path else part
+            dirs_to_create.append(current_path)
+
+        # Crear cada directorio vía REPL
+        for dir_path in dirs_to_create:
+            cmd = f"""
+import os
+try:
+    os.mkdir('{dir_path}')
+except OSError as e:
+    if e.args[0] != 17:  # EEXIST
+        raise
+"""
+            self.execute(cmd, timeout=2)
+
+        return True
+
     def send_file(self, local_path, remote_name, max_size=None):
         """
-        Sube un archivo al ESP8266 usando WebREPL.
+        Sube un archivo al ESP8266 usando protocolo binario WebREPL.
+        Implementación basada en webrepl_cli.py oficial de MicroPython.
 
         Args:
             local_path: Ruta local del archivo
@@ -487,285 +550,103 @@ class WebREPLClient:
                 print(f"{RED}❌ Archivo no encontrado: {local_path}{NC}")
             logger.error(f"Archivo no encontrado: {local_path}")
             return False
-        
+
         # Validar tamaño de archivo
         file_size = local_path.stat().st_size
         max_allowed = max_size or MAX_FILE_SIZE
-        
+
         if file_size > max_allowed:
             error_msg = f"Archivo muy grande: {file_size} bytes (máximo: {max_allowed} bytes)"
             if self.verbose:
                 print(f"{RED}❌ {error_msg}{NC}")
             logger.error(error_msg)
             raise ValueError(error_msg)
-        
-        logger.info(f"Subiendo archivo: {local_path} ({file_size} bytes) → {remote_name}")
-        
+
+        logger.info(f"Subiendo archivo (protocolo binario): {local_path} ({file_size} bytes) → {remote_name}")
+
         if self.verbose:
-            print(f"{BLUE}📄 {local_path} → {remote_name} ({file_size} bytes){NC}")
-        
+            print(f"{BLUE}📄 {local_path.name} → {remote_name} ({file_size} bytes){NC}")
+
         try:
-            with open(local_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            logger.debug(f"Contenido leído: {len(content)} caracteres")
+            # Crear directorios si es necesario
+            self._create_directory_structure(remote_name)
 
-            # Mejorar escaping para manejar triple quotes y caracteres especiales
-            content_escaped = (content
-                .replace('\\', '\\\\')        # Backslashes primero
-                .replace("'''", "\\'\\'\\'")  # Triple quotes
-                .replace("'", "\\'"))         # Single quotes
+            # Preparar nombre de archivo remoto (sin sandbox prefix)
+            dest_fname = remote_name.encode("utf-8")
 
-            # Verificar si el contenido tiene secuencias problemáticas
-            use_base64 = False
-            if "'''" in content or len(content_escaped) > len(content) * 1.5:
-                # Si hay triple quotes en el contenido original o el escaped creció mucho,
-                # usar base64 como método más seguro
-                use_base64 = True
-                logger.info(f"Usando base64 encoding para {remote_name} (contiene caracteres especiales)")
+            # Construir request binario según protocolo WebREPL
+            # WEBREPL_REQ_S = "<2sBBQLH64s"
+            # - 2s: signature "WA"
+            # - B: opcode (1 = PUT_FILE)
+            # - B: reserved
+            # - Q: reserved (8 bytes)
+            # - L: file size (4 bytes)
+            # - H: filename length (2 bytes)
+            # - 64s: filename (max 64 bytes)
+            rec = struct.pack(
+                WEBREPL_REQ_S,
+                b"WA",                    # Signature
+                WEBREPL_PUT_FILE,         # Opcode
+                0,                        # Reserved
+                0,                        # Reserved
+                file_size,                # File size
+                len(dest_fname),          # Filename length
+                dest_fname                # Filename
+            )
 
-            # Crear directorios necesarios si el archivo está en una subcarpeta
-            remote_path = Path(remote_name)
-            dir_creation = ""
-            if len(remote_path.parts) > 1:
-                # Hay subdirectorios, crear la estructura
-                dirs_to_create = []
-                current_path = ""
-                for part in remote_path.parts[:-1]:  # Todos excepto el nombre del archivo
-                    current_path = f"{current_path}/{part}" if current_path else part
-                    dirs_to_create.append(current_path)
-                
-                # Crear código para crear directorios (compatible con MicroPython)
-                # Usar OSError con código de error específico para EEXIST
-                dir_lines = ["import os"]
-                for dir_path in dirs_to_create:
-                    dir_lines.append(f"try:")
-                    dir_lines.append(f"    os.mkdir('{dir_path}')")
-                    dir_lines.append(f"    print(f'📁 Directorio creado: {dir_path}')")
-                    dir_lines.append(f"except OSError as e:")
-                    dir_lines.append(f"    if e.args[0] != 17:  # 17 = EEXIST (ya existe)")
-                    dir_lines.append(f"        raise")
-                    dir_lines.append(f"    print(f'📁 Directorio ya existe: {dir_path}')")
-                dir_creation = "\n".join(dir_lines) + "\n"
-            
-            if use_base64:
-                # Usar base64 encoding para archivos con contenido problemático
-                import base64
-                content_b64 = base64.b64encode(content.encode('utf-8')).decode('ascii')
-                # Validar que ubinascii esté disponible (debería estar en MicroPython)
-                upload_code = f"""{dir_creation}import gc
-gc.collect()
-try:
-    import ubinascii
-except ImportError:
-    print('❌ Error: ubinascii no disponible')
-    raise
-with open('{remote_name}', 'wb') as f:
-    f.write(ubinascii.a2b_base64('{content_b64}'))
-print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
-"""
-                logger.info(f"Usando base64 para {remote_name} (tamaño encoded: {len(content_b64)} caracteres)")
-            else:
-                # Usar método normal con escaping mejorado
-                upload_code = f"""{dir_creation}import gc
-gc.collect()
-with open('{remote_name}', 'w') as f:
-    f.write('''{content_escaped}''')
-print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
-"""
-            
-            # Enviar código con manejo de errores de conexión
+            # Enviar request en dos partes (como hace webrepl_cli.py)
+            self.ws.send(rec[:10], opcode=websocket.ABNF.OPCODE_BINARY)
+            self.ws.send(rec[10:], opcode=websocket.ABNF.OPCODE_BINARY)
+
+            # Leer respuesta de confirmación
             try:
-                self.ws.send(upload_code + '\r\n')
-            except (ConnectionResetError, BrokenPipeError) as e:
+                resp_code = self._read_webrepl_resp()
+                if resp_code != 0:
+                    if self.verbose:
+                        print(f"{RED}   ❌ ESP8266 rechazó request (code: {resp_code}){NC}")
+                    logger.error(f"ESP8266 rechazó request para {remote_name}: code {resp_code}")
+                    return False
+            except Exception as e:
                 if self.verbose:
-                    print(f"{YELLOW}   ⚠️  Conexión perdida, reconectando...{NC}")
-                logger.warning(f"Conexión perdida durante upload de {remote_name}, intentando reconectar")
+                    print(f"{RED}   ❌ Error leyendo respuesta: {e}{NC}")
+                logger.error(f"Error leyendo respuesta WebREPL: {e}")
+                return False
 
-                # Intentar reconectar
-                self.close()
-                time.sleep(2)  # Esperar a que ESP8266 se estabilice
-
-                if not self.connect():
-                    if self.verbose:
-                        print(f"{RED}   ❌ No se pudo reconectar{NC}")
-                    return False
-
-                # Reintentar envío
-                try:
-                    self.ws.send(upload_code + '\r\n')
-                except Exception as retry_error:
-                    if self.verbose:
-                        print(f"{RED}   ❌ Error en reintento: {retry_error}{NC}")
-                    logger.error(f"Error en reintento de upload: {retry_error}")
-                    return False
-
-            # Dar más tiempo al ESP8266 para procesar, especialmente en WiFi lento (Termux)
-            time.sleep(2.0)  # AUMENTADO: más tiempo para procesamiento inicial
-
-            response = ""
-            try:
-                start_time = time.time()
-                # AUMENTADO: Timeout de 20 segundos para redes WiFi lentas (Termux/móvil)
-                timeout = 20
-                recv_attempts = 0
-                max_empty_attempts = 8  # AUMENTADO: Más intentos vacíos para WiFi lento
-
-                while time.time() - start_time < timeout:
-                    try:
-                        self.ws.settimeout(3.0)  # AUMENTADO: 3 segundos por recv para WiFi lento
-                        data = self.ws.recv()
-                        recv_attempts += 1
-
-                        if isinstance(data, bytes):
-                            response += data.decode('utf-8', errors='ignore')
-                        else:
-                            response += data
-
-                        # Confirmación exitosa
-                        if "Uploaded" in response or ">>>" in response:
-                            break
-
-                        # Reset contador si recibimos datos
-                        if data:
-                            max_empty_attempts = 8  # Reset al valor inicial
-
-                    except websocket.WebSocketTimeoutException:
-                        # Continuar intentando hasta el timeout total
-                        max_empty_attempts -= 1
-                        if max_empty_attempts <= 0 and response:
-                            # Ya tenemos respuesta y llevamos varios timeouts vacíos
-                            logger.debug(f"Terminando recv temprano después de {recv_attempts} intentos con respuesta")
-                            break
-                        pass
-                    except Exception as recv_error:
-                        logger.warning(f"Error durante recv: {recv_error}")
+            # Enviar contenido del archivo en chunks de 1024 bytes
+            bytes_sent = 0
+            with open(local_path, "rb") as f:
+                while True:
+                    chunk = f.read(1024)
+                    if not chunk:
                         break
+                    self.ws.send(chunk, opcode=websocket.ABNF.OPCODE_BINARY)
+                    bytes_sent += len(chunk)
 
-                    time.sleep(0.2)  # Ligeramente más tiempo entre intentos
+                    if self.verbose and bytes_sent % 4096 == 0:
+                        print(f"{BLUE}   Enviando: {bytes_sent}/{file_size} bytes\r{NC}", end='', flush=True)
 
-            except websocket.WebSocketTimeoutException:
-                pass
-            except Exception as outer_error:
-                logger.error(f"Error en timeout loop: {outer_error}")
-            
-            # Check for errors FIRST
-            if any(err in response for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"]):
+            if self.verbose and bytes_sent > 0:
+                print()  # Nueva línea después del progreso
+
+            # Leer respuesta final de confirmación
+            try:
+                resp_code = self._read_webrepl_resp()
+                if resp_code != 0:
+                    if self.verbose:
+                        print(f"{RED}   ❌ Upload falló (code: {resp_code}){NC}")
+                    logger.error(f"Upload falló para {remote_name}: code {resp_code}")
+                    return False
+            except Exception as e:
                 if self.verbose:
-                    print(f"{RED}   ❌ Error en upload{NC}")
-                    # Mostrar parte del error para debugging
-                    error_lines = [line for line in response.split('\n') if any(err in line for err in ["Traceback", "Error:", "SyntaxError", "MemoryError"])]
-                    if error_lines:
-                        print(f"{YELLOW}      {error_lines[0][:80]}{NC}")
-                logger.error(f"Error detectado durante upload de {remote_name}: {response[:300]}")
+                    print(f"{RED}   ❌ Error en confirmación final: {e}{NC}")
+                logger.error(f"Error en confirmación final: {e}")
                 return False
 
-            # Require explicit confirmation (más flexible para WiFi lento)
-            upload_confirmed = False
+            if self.verbose:
+                print(f"{GREEN}   ✅ OK ({bytes_sent} bytes){NC}")
+            logger.info(f"Archivo subido exitosamente: {remote_name} ({bytes_sent} bytes)")
+            return True
 
-            # Método 1: Confirmación explícita "Uploaded"
-            if "Uploaded" in response:
-                upload_confirmed = True
-                logger.debug("Confirmación por mensaje 'Uploaded'")
-            # Método 2: Prompt retornó (completó el comando)
-            elif ">>>" in response and len(response) > 5:
-                upload_confirmed = True
-                logger.debug("Confirmación por prompt '>>>'")
-            # Método 3: Si la respuesta está vacía o muy corta pero no hay error, intentar verificación directa
-            elif len(response) < 100 and not any(err in response for err in ["Traceback", "Error:"]):
-                # WiFi muy lento - saltar directamente a verificación
-                if self.verbose:
-                    print(f"{YELLOW}   ⚠️  Respuesta incompleta ({len(response)} bytes), intentando verificación...{NC}")
-                logger.warning(f"Respuesta incompleta para {remote_name}, saltando a verificación. Respuesta: {response[:200]}")
-                upload_confirmed = True  # Confiar en verificación posterior
-            else:
-                if self.verbose:
-                    print(f"{RED}   ❌ Sin confirmación de upload{NC}")
-                    print(f"{YELLOW}      Respuesta recibida: {len(response)} caracteres{NC}")
-                    if response:
-                        print(f"{YELLOW}      Primeros 100 chars: {response[:100]}{NC}")
-                logger.error(f"No se recibió confirmación de upload para {remote_name}. Respuesta: {response[:200]}")
-                return False
-
-            # VALIDACIÓN POST-UPLOAD: Verificar que el archivo existe y tiene el tamaño correcto
-            # Esto detecta fallos silenciosos que ocurren en WiFi inestable (Termux)
-            if upload_confirmed:
-                try:
-                    # Dar más tiempo al filesystem a sincronizar (especialmente en WiFi lento)
-                    time.sleep(0.5)
-
-                    # Verificar existencia y tamaño del archivo
-                    verify_code = f"""
-import os
-try:
-    size = os.stat('{remote_name}')[6]
-    print(f'VERIFY_OK:{remote_name}:{{size}}')
-except Exception as e:
-    print(f'VERIFY_ERROR:{{e}}')
-"""
-                    self.ws.send(verify_code + '\r\n')
-                    time.sleep(0.8)  # AUMENTADO: más tiempo para procesar en WiFi lento
-
-                    verify_response = ""
-                    verify_start = time.time()
-                    while time.time() - verify_start < 8:  # AUMENTADO: 8 segundos para verificación
-                        try:
-                            self.ws.settimeout(2.0)  # AUMENTADO: 2 segundos por recv
-                            data = self.ws.recv()
-                            if isinstance(data, bytes):
-                                verify_response += data.decode('utf-8', errors='ignore')
-                            else:
-                                verify_response += data
-
-                            if 'VERIFY_OK' in verify_response or 'VERIFY_ERROR' in verify_response or '>>>' in verify_response:
-                                break
-                        except websocket.WebSocketTimeoutException:
-                            # Continuar intentando hasta timeout
-                            continue
-                        except:
-                            break
-
-                    # Analizar respuesta de verificación
-                    if 'VERIFY_OK' in verify_response:
-                        # Extraer tamaño reportado
-                        try:
-                            verify_parts = verify_response.split('VERIFY_OK:')[1].split(':')
-                            if len(verify_parts) >= 2:
-                                remote_size = int(verify_parts[1].split()[0])
-                                # Verificar que el tamaño coincida (permitir diferencia de newlines)
-                                size_diff = abs(remote_size - file_size)
-                                if size_diff <= 10:  # Tolerancia de 10 bytes por diferencias de newline
-                                    if self.verbose:
-                                        print(f"{GREEN}   ✅ OK (verificado: {remote_size} bytes){NC}")
-                                    logger.info(f"Archivo verificado: {remote_name} ({remote_size} bytes)")
-                                    return True
-                                else:
-                                    if self.verbose:
-                                        print(f"{YELLOW}   ⚠️  Tamaño incorrecto: esperado ~{file_size}, obtenido {remote_size}{NC}")
-                                    logger.warning(f"Tamaño incorrecto para {remote_name}: esperado ~{file_size}, obtenido {remote_size}")
-                                    return False
-                        except Exception as parse_error:
-                            logger.debug(f"Error parseando verificación: {parse_error}")
-
-                    elif 'VERIFY_ERROR' in verify_response:
-                        if self.verbose:
-                            print(f"{RED}   ❌ Verificación falló: archivo no existe en ESP8266{NC}")
-                        logger.error(f"Archivo no encontrado en ESP8266 después de upload: {remote_name}")
-                        return False
-
-                    # Fallback: si no pudimos verificar, confiar en la confirmación original
-                    if self.verbose:
-                        print(f"{YELLOW}   ⚠️  No se pudo verificar (asumiendo OK){NC}")
-                    logger.warning(f"No se pudo verificar upload de {remote_name}, asumiendo exitoso")
-                    return True
-
-                except Exception as verify_error:
-                    # Error durante verificación no es fatal
-                    if self.verbose:
-                        print(f"{YELLOW}   ⚠️  Error verificando (asumiendo OK): {verify_error}{NC}")
-                    logger.warning(f"Error durante verificación de {remote_name}: {verify_error}")
-                    return True
-        
         except ValueError:
             # Re-lanzar ValueError (tamaño de archivo)
             raise
@@ -774,7 +655,7 @@ except Exception as e:
                 print(f"{RED}   ❌ Error: {e}{NC}")
             logger.error(f"Error subiendo archivo {local_path}: {e}", exc_info=True)
             return False
-    
+
     def execute(self, command, timeout=2):
         """
         Ejecuta un comando Python en el ESP8266.
