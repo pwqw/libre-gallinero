@@ -163,6 +163,17 @@ MicroPython has WebREPL file transfer limits:
 - Files exceeding this must be split or optimized
 - Deploy scripts validate file sizes before upload
 
+## Network Discovery
+
+The deployment system uses an improved network scanner that:
+- **Fase 1 (Port Scan)**: Escanea toda la red /24 detectando dispositivos con puerto 8266 abierto usando sockets
+- **Fase 2 (WebREPL Test)**: Prueba WebREPL en cada dispositivo detectado secuencialmente
+- **Sin límites artificiales**: Escanea todos los hosts (no solo 100)
+- **Optimizado para Termux/móviles**: Limita threads concurrentes a 100 para no saturar
+- **Verboso y claro**: Muestra progreso en ambas fases para debugging
+
+Esto soluciona el problema donde apps externas de escaneo encontraban el ESP32 pero el deploy no.
+
 ## Deployment System
 
 The deployment system supports three modes:

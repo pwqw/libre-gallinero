@@ -147,93 +147,139 @@ def test_webrepl_connection(ip, password, port=8266, timeout=2):
         return False
 
 
-def find_esp8266_in_network(password, port=8266, verbose=True, max_hosts=100):
+def scan_active_hosts(network, port=8266, verbose=True, timeout=0.5):
+    """
+    Escanea la red buscando hosts con el puerto especificado abierto.
+    Usa sockets para detectar hosts activos antes de probar WebREPL.
+
+    Args:
+        network: Objeto ipaddress.IPv4Network con el rango a escanear
+        port: Puerto a probar (default: 8266)
+        verbose: Si True, muestra mensajes de progreso
+        timeout: Timeout para cada conexión socket (default: 0.5s)
+
+    Returns:
+        list: Lista de IPs con el puerto abierto
+    """
+    active_hosts = []
+    hosts_list = list(network.hosts())
+    total_hosts = len(hosts_list)
+    checked = 0
+    lock = threading.Lock()
+
+    if verbose:
+        print(f"{BLUE}🔍 Fase 1: Detectando dispositivos activos en puerto {port}...{NC}")
+        print(f"   Escaneando {total_hosts} hosts en {network}")
+
+    def check_port(host_ip):
+        nonlocal checked
+        host_str = str(host_ip)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        try:
+            result = sock.connect_ex((host_str, port))
+            if result == 0:  # Puerto abierto
+                with lock:
+                    active_hosts.append(host_str)
+                    if verbose:
+                        print(f"{GREEN}   ✓ Dispositivo detectado: {host_str}:{port}{NC}")
+        except:
+            pass
+        finally:
+            sock.close()
+            with lock:
+                checked += 1
+                if verbose and checked % 20 == 0:
+                    print(f"   Progreso: {checked}/{total_hosts} hosts escaneados...", end='\r')
+
+    threads = []
+    for host in hosts_list:
+        t = threading.Thread(target=check_port, args=(host,))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+
+        # Limitar threads concurrentes para no saturar (especialmente en Termux)
+        if len(threads) >= 100:
+            for thread in threads:
+                thread.join(timeout=2)
+            threads = [t for t in threads if t.is_alive()]
+
+    # Esperar a que terminen todos los threads
+    for t in threads:
+        t.join(timeout=2)
+
+    if verbose:
+        print(f"\n{BLUE}   Dispositivos detectados: {len(active_hosts)}{NC}\n")
+
+    return active_hosts
+
+
+def find_esp8266_in_network(password, port=8266, verbose=True, max_hosts=None):
     """
     Escanea la red local buscando un ESP8266 con WebREPL activo.
-    
+
+    Estrategia mejorada:
+    1. Escanea TODA la red detectando hosts activos en el puerto 8266
+    2. Prueba WebREPL en cada dispositivo detectado
+    3. Retorna el primero que responda correctamente
+
     Args:
         password: Password de WebREPL
         port: Puerto WebREPL (default: 8266)
         verbose: Si True, muestra mensajes de progreso
-        max_hosts: Número máximo de hosts a escanear (default: 100)
-    
+        max_hosts: DEPRECATED - se ignora, siempre escanea toda la red
+
     Returns:
         str: IP del ESP8266 encontrado, o None si no se encuentra
     """
     if verbose:
-        print(f"{BLUE}🔍 Escaneando red local en busca de ESP8266...{NC}")
-    
+        print(f"{BLUE}🔍 Escaneando red local en busca de ESP8266/ESP32...{NC}")
+
     local_ip = get_local_ip()
     if not local_ip:
         if verbose:
             print(f"{RED}❌ No se pudo obtener la IP local{NC}")
         return None
-    
+
     if verbose:
         print(f"   IP local: {local_ip}")
-    
+
     network = get_network_range(local_ip)
     if not network:
         if verbose:
             print(f"{RED}❌ No se pudo determinar el rango de red{NC}")
         return None
-    
+
+    # Fase 1: Detectar todos los hosts activos con puerto 8266 abierto
+    active_hosts = scan_active_hosts(network, port, verbose)
+
+    if not active_hosts:
+        if verbose:
+            print(f"{YELLOW}⚠️  No se encontraron dispositivos con puerto {port} abierto{NC}")
+        return None
+
+    # Fase 2: Probar WebREPL en cada dispositivo detectado
     if verbose:
-        print(f"   Escaneando: {network.network_address} - {network.broadcast_address}")
-        print(f"   Probando puerto {port} con password '{password}'...\n")
-    
-    found_ip = None
-    hosts_list = list(network.hosts())
-    total_hosts = min(len(hosts_list), max_hosts)  # Limitar número de hosts
-    checked = 0
-    
-    lock = threading.Lock()
-    start_time = time.time()
-    max_scan_time = 30  # Timeout máximo de 30 segundos para el escaneo
-    
-    def check_host(host_ip):
-        nonlocal found_ip
-        if found_ip:
-            return
-        
-        host_str = str(host_ip)
-        if test_webrepl_connection(host_str, password, port, timeout=1):
-            with lock:
-                if not found_ip:
-                    found_ip = host_str
-                    if verbose:
-                        print(f"\n{GREEN}✅ ESP8266 encontrado en: {host_str}{NC}\n")
-    
-    threads = []
-    for host in hosts_list[:max_hosts]:  # Limitar a max_hosts
-        if found_ip:
-            break
-        if time.time() - start_time > max_scan_time:
+        print(f"{BLUE}🔍 Fase 2: Probando WebREPL en {len(active_hosts)} dispositivo(s)...{NC}")
+
+    for i, host_ip in enumerate(active_hosts, 1):
+        if verbose:
+            print(f"   [{i}/{len(active_hosts)}] Probando {host_ip}...", end=' ')
+
+        if test_webrepl_connection(host_ip, password, port, timeout=2):
             if verbose:
-                print(f"\n{YELLOW}⚠️  Timeout de escaneo alcanzado ({max_scan_time}s){NC}")
-            break
-        t = threading.Thread(target=check_host, args=(host,))
-        t.daemon = True
-        t.start()
-        threads.append(t)
-        checked += 1
-        
-        if verbose and checked % 10 == 0:
-            print(f"   Escaneados {checked}/{total_hosts} hosts...", end='\r')
-        
-        if len(threads) >= 50:
-            for t in threads:
-                t.join(timeout=0.1)
-            threads = [t for t in threads if t.is_alive()]
-    
-    # Esperar a que terminen los threads restantes con timeout
-    for t in threads:
-        t.join(timeout=0.5)
-    
-    if not found_ip and verbose:
-        print(f"\n{YELLOW}⚠️  No se encontró ESP8266 en la red local{NC}")
-    
-    return found_ip
+                print(f"{GREEN}✅ ESP8266/ESP32 encontrado!{NC}\n")
+            return host_ip
+        else:
+            if verbose:
+                print(f"{YELLOW}✗ No es ESP8266/ESP32{NC}")
+
+    if verbose:
+        print(f"\n{YELLOW}⚠️  Ninguno de los dispositivos detectados tiene WebREPL activo{NC}")
+        print(f"   Verifica que el ESP8266/ESP32 tenga WebREPL habilitado")
+
+    return None
 
 
 def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True, cached_ip=None):
