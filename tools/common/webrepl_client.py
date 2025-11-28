@@ -420,12 +420,12 @@ class WebREPLClient:
     def send_file(self, local_path, remote_name, max_size=None):
         """
         Sube un archivo al ESP8266 usando WebREPL.
-        
+
         Args:
             local_path: Ruta local del archivo
             remote_name: Nombre del archivo en el ESP8266
             max_size: Tamaño máximo permitido en bytes (default: MAX_FILE_SIZE)
-        
+
         Returns:
             bool: True si el upload fue exitoso, False en caso contrario
         """
@@ -434,6 +434,20 @@ class WebREPLClient:
                 print(f"{RED}❌ No hay conexión WebREPL activa{NC}")
             logger.error("No hay conexión WebREPL activa")
             return False
+
+        # Limpiar el estado del REPL antes de enviar (Ctrl-C para cancelar cualquier comando pendiente)
+        try:
+            self.ws.send('\x03')  # Ctrl-C
+            time.sleep(0.2)
+            # Limpiar buffer
+            try:
+                self.ws.settimeout(0.1)
+                while True:
+                    self.ws.recv()
+            except:
+                pass
+        except:
+            pass
         
         local_path = Path(local_path)
         if not local_path.exists():
@@ -528,8 +542,33 @@ with open('{remote_name}', 'w') as f:
 print('✅ Uploaded: {remote_name} ({len(content)} bytes)')
 """
             
-            self.ws.send(upload_code + '\r\n')
-            time.sleep(0.5)
+            # Enviar código con manejo de errores de conexión
+            try:
+                self.ws.send(upload_code + '\r\n')
+            except (ConnectionResetError, BrokenPipeError) as e:
+                if self.verbose:
+                    print(f"{YELLOW}   ⚠️  Conexión perdida, reconectando...{NC}")
+                logger.warning(f"Conexión perdida durante upload de {remote_name}, intentando reconectar")
+
+                # Intentar reconectar
+                self.close()
+                time.sleep(2)  # Esperar a que ESP8266 se estabilice
+
+                if not self.connect():
+                    if self.verbose:
+                        print(f"{RED}   ❌ No se pudo reconectar{NC}")
+                    return False
+
+                # Reintentar envío
+                try:
+                    self.ws.send(upload_code + '\r\n')
+                except Exception as retry_error:
+                    if self.verbose:
+                        print(f"{RED}   ❌ Error en reintento: {retry_error}{NC}")
+                    logger.error(f"Error en reintento de upload: {retry_error}")
+                    return False
+
+            time.sleep(1.0)  # Aumentar delay para dar tiempo al ESP8266
             
             response = ""
             try:

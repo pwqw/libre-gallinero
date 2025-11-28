@@ -78,9 +78,13 @@ copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-blink.sh" "$HOME/.s
 copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-gallinero.sh" "$HOME/.shortcuts/Deploy Gallinero"
 copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/deploy-heladera.sh" "$HOME/.shortcuts/Deploy Heladera"
 
+# Shortcut para abrir REPL interactivo
+copy_shortcut "$HOME/libre-gallinero/termux/shortcuts/open-repl.sh" "$HOME/.shortcuts/Abrir REPL"
+
 printf "\n\n✅ ¡Setup completo!\n\n"
 printf "📋 Shortcuts instalados en Termux Widget:\n"
 printf "  • Update Setup     - Actualiza el repositorio y dependencias\n"
+printf "  • Abrir REPL       - Abre REPL interactivo del ESP8266\n"
 printf "  • Deploy Blink     - Despliega app Blink (LED test)\n"
 printf "  • Deploy Gallinero - Despliega app Gallinero (producción)\n"
 printf "  • Deploy Heladera  - Despliega app Heladera (experimental)\n"

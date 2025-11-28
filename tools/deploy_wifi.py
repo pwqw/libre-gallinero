@@ -230,12 +230,15 @@ def main():
             print(f"{RED}⚠️  {remote_name}: {error_msg}{NC}")
             failed += 1
             continue
-        
+
         if client.send_file(local_path, remote_name, max_size=MAX_FILE_SIZE):
             success += 1
         else:
             failed += 1
         print()
+
+        # Delay entre archivos para dar tiempo al ESP8266 a procesar
+        time.sleep(0.5)
     
     # Copiar .env si existe en el repositorio
     env_path = Path(str(project_dir)) / '.env'
