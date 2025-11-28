@@ -159,10 +159,27 @@ def main():
                     ip_arg = arg2
     
     if app_name:
-        print(f"{BLUE}📦 App especificada: {app_name}{NC}\n")
+        print(f"{BLUE}📦 App especificada: {app_name}{NC}")
+    else:
+        print(f"{BLUE}📦 App: blink (default){NC}")
+
     if ip_arg:
-        print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
-    
+        print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}")
+
+    # Pedir confirmación antes de continuar
+    print(f"\n{YELLOW}¿Continuar con el deploy? (s/N){NC}")
+    try:
+        confirm = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print(f"\n{GREEN}👋 Cancelado por usuario{NC}")
+        sys.exit(0)
+
+    if confirm != 's':
+        print(f"{GREEN}👋 Deploy cancelado{NC}")
+        sys.exit(0)
+
+    print()
+
     # Detectar directorio del proyecto
     script_dir = Path(__file__).parent.absolute()
     project_dir = script_dir.parent
@@ -324,28 +341,43 @@ def main():
     except (EOFError, KeyboardInterrupt):
         reply = 'n'
 
-    if reply in ['s', 'S']:
-        print(f"\n🔄 Reiniciando ESP8266...")
+    if reply == 's':
+        print(f"\n{BLUE}🔄 Reiniciando ESP8266...{NC}")
 
         # Reconectar para reiniciar
         client = WebREPLClient(project_dir=project_dir, verbose=False, auto_discover=False)
         client.ip = ip_arg or cached_ip_pre or client.config.get('WEBREPL_IP')
         if client.connect():
-            client.execute("\x03", timeout=0.5)  # Ctrl-C to reset REPL state
-            client.execute("import machine; machine.reset()", timeout=1)
-            time.sleep(0.5)
-            client.close()
+            try:
+                # Enviar comando de reset
+                client.ws.send("\x03")  # Ctrl-C
+                time.sleep(0.3)
+                client.ws.send("import machine\r\n")
+                time.sleep(0.2)
+                client.ws.send("machine.reset()\r\n")
+                time.sleep(0.5)
+            except:
+                pass
+            finally:
+                client.close()
+
             print(f"{GREEN}✅ Deploy completo - ESP8266 reiniciado{NC}")
             print(f"{YELLOW}⚠️  El programa se está ejecutando ahora{NC}")
-            print(f"{YELLOW}   Para detenerlo y recuperar REPL, usa el shortcut 'Abrir REPL'{NC}")
-            print(f"{YELLOW}   y presiona Ctrl-C{NC}\n")
+            print(f"{YELLOW}   Para ver logs o detenerlo, usa: python3 tools/open_repl.py{NC}\n")
         else:
             print(f"{RED}❌ No se pudo conectar para reiniciar{NC}\n")
     else:
         print(f"{GREEN}✅ Deploy completo (sin reiniciar){NC}")
         print(f"{BLUE}💡 Recomendación:{NC}")
-        print(f"   • Para probar: Usa 'Abrir REPL' → import machine; machine.reset()")
-        print(f"   • O simplemente desconecta y vuelve a conectar el ESP8266\n")
+        print(f"   • Para probar: python3 tools/open_repl.py")
+        print(f"   • Luego: import machine; machine.reset()\n")
+
+    # Pause antes de salir para poder leer mensajes
+    print(f"{YELLOW}Presiona Enter para continuar...{NC}")
+    try:
+        input()
+    except (EOFError, KeyboardInterrupt):
+        pass
 
 
 if __name__ == '__main__':
