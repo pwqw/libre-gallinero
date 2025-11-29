@@ -1,116 +1,77 @@
 # main.py - Main orchestrator
-import sys
-
-_wdt = None
-
+import logger
+_wdt=None
 def log(msg):
-    print(f"[main] {msg}")
-    try:
-        if hasattr(sys.stdout, 'flush'):
-            sys.stdout.flush()
-    except:
-        pass
-
+ logger.log('main',msg)
 def feed_wdt():
     global _wdt
     if _wdt:
-        try:
-            _wdt.feed()
-        except:
-            pass
-
+        try:_wdt.feed()
+        except:pass
 def main():
     global _wdt
     import gc
-    
-    # WDT - solo si está disponible
+    logger.init(100)
     try:
         from machine import WDT
-        _wdt = WDT(60000)
-        log("✅ WDT activado (60s)")
-    except:
-        _wdt = None
-    
+        _wdt=WDT(60000)
+        log("WDT 60s")
+    except:_wdt=None
     gc.collect()
-    log("=== Iniciando main.py ===")
-    log(f"Memoria libre: {gc.mem_free()} bytes")
+    log("=== Iniciando ===")
+    log(f"Mem: {gc.mem_free()} bytes")
     
-    # Cargar configuración
     import config
-    cfg = config.load_config()
-    app_name = cfg.get('APP', 'blink')
+    cfg=config.load_config()
+    app_name=cfg.get('APP','blink')
     log(f"App: {app_name}")
     gc.collect()
-    
-    # Conectar WiFi
     log("Conectando WiFi...")
     feed_wdt()
     import wifi
-    wifi.connect_wifi(cfg, wdt_callback=feed_wdt)
-    # Logging de memoria después de WiFi
-    mem_after_wifi = gc.mem_free()
-    log(f"Memoria libre (después de WiFi): {mem_after_wifi} bytes")
-    
-    # Monitoreo WiFi en background (opcional - solo si _thread disponible)
+    wifi.connect_wifi(cfg,wdt_callback=feed_wdt)
+    log(f"Mem(post-WiFi): {gc.mem_free()}")
     try:
         import _thread
-        _thread.start_new_thread(wifi.monitor_wifi, (30,))
-        log("✅ Monitoreo WiFi iniciado")
-    except ImportError:
-        # _thread no disponible en este firmware - sistema funciona sin él
-        pass
-    except:
-        # Otro error - ignorar silenciosamente
-        pass
-    
-    # NTP con timezone
+        _thread.start_new_thread(wifi.monitor_wifi,(30,))
+        log("Monitor WiFi OK")
+    except:pass
     feed_wdt()
     import ntp
-    longitude = cfg.get('LONGITUDE', -64.1833)
-    ntp_ok = ntp.sync_ntp(longitude=longitude)
-    if not ntp_ok:
-        log("⚠ NTP falló")
+    longitude=cfg.get('LONGITUDE',-64.1833)
+    ntp_ok=ntp.sync_ntp(longitude=longitude)
+    if not ntp_ok:log("⚠ NTP falló")
     feed_wdt()
     gc.collect()
-    
-    # Verificar estado WiFi después de conexión
     try:
         import network
-        wlan = network.WLAN(network.STA_IF)
-        wifi_connected = wlan.isconnected()
-        wifi_ip = wlan.ifconfig()[0] if wifi_connected else None
+        wlan=network.WLAN(network.STA_IF)
+        wifi_ok=wlan.isconnected()
+        wifi_ip=wlan.ifconfig()[0]if wifi_ok else None
     except:
-        wifi_connected = False
-        wifi_ip = None
-    
-    # Logging de memoria antes de cargar app
-    mem_after_ntp = gc.mem_free()
-    log(f"Memoria libre (después de NTP): {mem_after_ntp} bytes")
-    
-    # Mensaje de sistema listo
-    log("=" * 40)
-    log("✅ SISTEMA LISTO")
-    log(f"  WiFi: {'✓' if wifi_connected else '✗'} {wifi_ip if wifi_ip else 'No conectado'}")
-    log(f"  WebREPL: {'✓' if wifi_connected else '✗'}")
-    log(f"  NTP: {'✓' if ntp_ok else '✗'}")
-    log(f"  Memoria: {mem_after_ntp} bytes")
-    log(f"  App: {app_name}")
-    log("=" * 40)
-    
-    # Cargar app
+        wifi_ok=False
+        wifi_ip=None
+    mem=gc.mem_free()
+    log("="*40)
+    log("SISTEMA LISTO")
+    log(f"WiFi:{'✓'if wifi_ok else'✗'} {wifi_ip if wifi_ip else'No'}")
+    log(f"WebREPL:{'✓'if wifi_ok else'✗'}")
+    log(f"NTP:{'✓'if ntp_ok else'✗'}")
+    log(f"Mem:{mem}")
+    log(f"App:{app_name}")
+    log("="*40)
     log("Cargando app...")
     feed_wdt()
     try:
         import app_loader
-        app_loader.load_app(app_name, cfg)
-        log("✅ App cargada")
+        app_loader.load_app(app_name,cfg)
+        log("App cargada")
     except ImportError:
-        log("⚠ App no encontrada (normal en setup inicial)")
+        log("⚠ App no encontrada")
     except Exception as e:
-        log(f"⚠ Error app: {e}")
+        log(f"⚠ Error app:{e}")
     feed_wdt()
-    
-    log("✅ Sistema operativo")
+    log("Sistema operativo")
 
 if __name__ == '__main__' or True:
     try:
