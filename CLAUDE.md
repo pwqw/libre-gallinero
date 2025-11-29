@@ -31,6 +31,7 @@ tools/                      # Deployment tools (Python 3.9)
 src/                        # Código → ESP8266
 ├── boot.py                # Bootstrap (WDT 30s)
 ├── main.py                # Orchestrator (WDT 60s)
+├── logger.py              # Circular log buffer (RAM-only)
 ├── config.py, wifi.py, ntp.py, app_loader.py
 └── blink/, gallinero/, heladera/  # Apps
 ```
@@ -67,6 +68,7 @@ boot.py              # WDT 30s, gc.collect
 webrepl_cfg.py       # Password WebREPL
 .env                 # Config WiFi, coords, app
 main.py              # WDT 60s, WiFi, NTP, app_loader
+logger.py            # Log buffer circular (RAM-only)
 config.py, wifi.py, ntp.py, app_loader.py
 ```
 
@@ -203,6 +205,45 @@ gc.mem_free()
 ```
 
 Estrategia: `gc.collect()` después de cada operación mayor, importar módulos on-demand, archivos <8KB.
+
+### WiFi Persistence (Espressif SDK)
+
+**CRÍTICO:** ESP8266 guarda credenciales WiFi automáticamente en flash (nivel SDK Espressif, NO MicroPython).
+
+**Comportamiento automático:**
+- Cada `wlan.connect(ssid, password)` → escribe en flash (últimas 5-6 redes)
+- **Boot automático:** ESP8266 reconecta automáticamente a última red exitosa
+- **NO reconecta después de `wlan.active(False/True)`** → requiere `wlan.connect()` manual
+
+**Optimización implementada en `wifi.py`:**
+```python
+# 1. Verificar conexión SDK automática
+if wlan.isconnected():
+    log("WiFi SDK auto: {ip}")
+    return True
+
+# 2. Intentar reconexión SDK cache (sin password)
+wlan.connect()  # Usa credenciales guardadas en flash
+time.sleep(5)
+if wlan.isconnected():
+    log("SDK cache OK")
+    return True
+
+# 3. Fallback: connect con password explícito
+wlan.connect(ssid, password)
+```
+
+**Ventajas:**
+- Reconexión más rápida
+- Menos escrituras flash (reduce wear-out)
+- Aprovecha inteligencia SDK Espressif
+
+**Logging System:**
+- `logger.py`: Buffer circular RAM-only (~2KB, 100 líneas)
+- Todos los módulos usan `logger.log(tag, msg)`
+- `read_logs.py`: Modo NO INVASIVO por defecto (no reinicia programa)
+- `--history`: Ver buffer histórico sin interrumpir
+- `--restart`: Modo invasivo (reinicia main.py)
 
 ---
 
