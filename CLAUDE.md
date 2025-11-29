@@ -1,311 +1,366 @@
-# CLAUDE.md
+# 🎯 FOCO DEL PROYECTO
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+**Framework de deployment vía WebREPL para ESP8266 con MicroPython.**
 
-## Project Overview
+NO es un proyecto de automatización. Es un **sistema de deployment** que gestiona múltiples ESP8266 flasheados con MicroPython, desplegando diferentes apps en cada dispositivo vía WiFi usando protocolo WebREPL.
 
-Libre-Gallinero is a MicroPython-based automation system for chicken coop lighting and temperature control, targeting NodeMCU (ESP8266/ESP32) devices. The system simulates natural summer daylight patterns and maintains optimal temperatures for chicks using DHT11 sensors and relays.
+---
 
-## Commands
+## 1️⃣ Framework de Deployment WebREPL
 
-### Development Workflow
+### Concepto
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+Herramientas Python 3.9 (PC/Mac/Linux/Termux) para:
+- **Setup inicial** (USB, 1 vez): Flashear ESP8266 con sistema base completo
+- **Deploy apps** (WiFi, repetible): Cambiar app en cada ESP8266
+- **Multi-dispositivo**: Gestionar múltiples ESP8266, cada uno con su app
 
-# Run all tests
-pytest
+### Estructura
 
-# Run specific test file
-pytest tests/test_main.py
+```
+tools/                      # Deployment tools (Python 3.9)
+├── setup_initial.py       # Setup USB (1 vez)
+├── deploy_wifi.py         # Deploy WebREPL
+├── deploy_app.py          # Deploy con IP cache (Termux)
+├── deploy_usb.py          # Deploy USB
+└── common/
+    ├── webrepl_client.py  # WebREPL protocol (CRÍTICO)
+    ├── ampy_utils.py      # USB utils
+    └── network_scanner.py # Network scanner
 
-# Run tests with timeout (recommended for MicroPython mock tests)
-pytest tests/ -v
+src/                        # Código → ESP8266
+├── boot.py                # Bootstrap (WDT 30s)
+├── main.py                # Orchestrator (WDT 60s)
+├── config.py, wifi.py, ntp.py, app_loader.py
+└── blink/, gallinero/, heladera/  # Apps
 ```
 
-### Deployment
+### Flujo
 
-**Todas las herramientas están en `tools/` - funcionan en PC, Mac, Linux y Termux:**
-
+**Primera vez (USB):**
 ```bash
-# Initial setup (USB only, first time) - DEPLOYS COMPLETE SYSTEM
 python3 tools/setup_initial.py
-# After this, ESP8266 is fully functional with blink app
-# LED will start blinking after reboot
-
-# Deploy via WiFi (preferred for development)
-python3 tools/deploy_wifi.py gallinero       # Deploy gallinero app
-python3 tools/deploy_wifi.py heladera        # Deploy heladera app
-python3 tools/deploy_wifi.py blink           # Re-deploy blink
-python3 tools/deploy_wifi.py heladera 192.168.1.100  # Specify IP
-
-# Deploy with IP caching (faster, recommended for Termux/mobile)
-python3 tools/deploy_app.py gallinero        # Uses cached IP from previous deploy
-python3 tools/deploy_app.py heladera         # First run scans network, then caches IP
-python3 tools/deploy_app.py blink            # Each app has separate IP cache
-
-# Deploy via USB (faster for local development)
-python3 tools/deploy_usb.py gallinero        # Deploy gallinero via USB
-python3 tools/deploy_usb.py blink            # Deploy blink via USB
-python3 tools/deploy_usb.py heladera         # Deploy heladera via USB
-
-# Utilities
-python3 tools/clean_esp8266.py               # Interactive cleanup tool
-python3 tools/open_repl.py                   # Open interactive REPL
-
-# Platform-specific wrappers (optional, just call tools/ directly)
-./pc/deploy.sh gallinero                     # PC wrapper → tools/deploy_usb.py
-python3 pc/setup_webrepl.py                  # PC wrapper → tools/setup_initial.py
-
-# Termux shortcuts (Android/mobile)
-./termux/clean.sh                            # Cleanup tool shortcut
+# Despliega ~20 archivos: boot, main, config, wifi, ntp, app_loader, .env, blink/
+# LED parpadea automáticamente → sistema funcional
 ```
 
-### Configuration
+**Cambiar app (WiFi):**
+```bash
+python3 tools/deploy_wifi.py gallinero
+python3 tools/deploy_wifi.py heladera
+```
+
+### Features
+- Zero-config discovery (escaneo automático)
+- IP caching (deploy ultra-rápido)
+- WebREPL protocol binario oficial
+- Multi-plataforma + optimizado Termux
+
+---
+
+## 2️⃣ Setup Inicial - Sistema Base Común
+
+### Archivos base (TODOS los ESP8266)
+
+```
+boot.py              # WDT 30s, gc.collect
+webrepl_cfg.py       # Password WebREPL
+.env                 # Config WiFi, coords, app
+main.py              # WDT 60s, WiFi, NTP, app_loader
+config.py, wifi.py, ntp.py, app_loader.py
+```
+
+### `setup_initial.py` hace:
+1. Configura WebREPL (password)
+2. Copia sistema base
+3. Despliega .env
+4. Instala app blink
+
+**Resultado:** ESP8266 100% funcional (WiFi + WebREPL + LED parpadea)
+
+### Apps varían por dispositivo
 
 ```bash
-# Setup environment
-cp .env.example .env
-# Edit .env with your WiFi credentials, WebREPL password, and location coordinates
+python3 tools/deploy_wifi.py gallinero 192.168.1.10  # ESP8266 #1
+python3 tools/deploy_wifi.py heladera 192.168.1.11   # ESP8266 #2
+python3 tools/deploy_wifi.py blink 192.168.1.12      # ESP8266 #3
 ```
 
-## Architecture
+---
 
-### Boot Sequence
+## 3️⃣ WebREPL - Protocolo Binario MicroPython 1.19
 
-The ESP8266 boot sequence follows this flow:
+### CRÍTICO: WebREPL es el 100% del deployment
 
-1. **boot.py** - Minimal bootstrap that initializes WDT (30s timeout) and memory cleanup
-2. **main.py** - Main orchestrator that:
-   - Initializes WDT (60s timeout if available)
-   - Loads configuration from .env (falls back to .env.example or hardcoded defaults)
-   - Connects to WiFi (with WDT feed callbacks during long operations)
-   - Starts WiFi monitor thread (if _thread available)
-   - Syncs time via NTP
-   - Loads and runs the configured app (blink, gallinero, or heladera)
+Usos: Setup remoto, deploy apps, debugging, OTA updates.
+**USB solo para setup inicial.**
 
-### Module System
+### Protocolo Binario
 
-The codebase is split into base modules and app-specific modules:
+Basado en [webrepl_cli.py](https://github.com/micropython/webrepl/blob/master/webrepl_cli.py) y [modwebrepl.c](https://github.com/micropython/micropython/blob/master/extmod/modwebrepl.c).
 
-**Base Modules** (always deployed):
-- `config.py` - Configuration loader that reads .env files
-- `wifi.py` - WiFi connection manager with auto-reconnect and reset logic
-- `ntp.py` - NTP time synchronization
-- `app_loader.py` - Dynamic app loader that imports the configured app
-
-**Apps** (deployed when specified, defaults to blink):
-- `blink/` - Minimalist LED blink demo (default for initial setup)
-  - `blink.py` - Simple LED blink loop
-- `gallinero/` - Chicken coop automation (solar calculations, relay control)
-  - `app.py` - Main control loop
-  - `solar.py` - Sun time calculations
-  - `logic.py` - Relay state logic
-  - `hardware.py` - Hardware initialization
-- `heladera/` - Reserved for future refrigerator app
-  - `blink.py` - Currently contains LED blink demo (will evolve)
-
-### Configuration Architecture
-
-Configuration is loaded in this priority order:
-1. `.env` file on ESP8266 (if exists)
-2. `.env.example` file on ESP8266 (if exists)
-3. Hardcoded defaults in `config.py`
-
-The APP configuration variable determines which app module gets loaded by `app_loader.py`.
-Each app must expose a `run(cfg)` function. Default is 'blink' for minimal setup.
-
-### WiFi Management
-
-The WiFi system (`wifi.py`) has sophisticated retry and reset logic:
-- Scans for networks (unless hidden network)
-- Retries connection with exponential backoff
-- Resets WiFi interface every 3 failed attempts
-- Validates IP addresses (warns if outside 192.168.0.x range)
-- Monitors connection in background thread (30s interval)
-- Auto-reconnects on disconnection
-
-WebREPL is auto-started on successful connection for remote development.
-
-### Watchdog Timer (WDT) Strategy
-
-Two WDT instances are used:
-- `boot.py`: 30s timeout for bootstrap phase
-- `main.py`: 60s timeout for main operation, with feed callbacks during WiFi connection
-
-The WDT is optional (gracefully handles absence) to support testing environments.
-
-### Memory Management
-
-The code uses aggressive memory management for MicroPython:
-- `gc.collect()` called after major operations
-- Modules imported only when needed
-- Memory stats logged at startup
-- Consistent `log()` functions with stdout.flush() for reliable serial output
-
-## Testing
-
-Tests use pytest with MicroPython mocking patterns:
-
-- All MicroPython-specific modules (machine, _thread, ntptime, utime) are mocked
-- Tests use `patch.dict('sys.modules', {...})` to inject mocks
-- Timeouts are set globally via `pytest.ini` and per-test with `@pytest.mark.timeout(10)`
-- Test files mirror the src/ structure
-
-**Important testing patterns:**
-- Mock `gc.mem_free()` to prevent AttributeError
-- Mock `sys.print_exception` for MicroPython compatibility
-- Clean up `sys.modules` between tests to ensure isolation
-- Use `capsys.readouterr()` to capture and verify log output
-
-## File Size Constraints
-
-MicroPython has WebREPL file transfer limits:
-- Maximum file size: 100KB (enforced in `common/webrepl_client.py`)
-- Files exceeding this must be split or optimized
-- Deploy scripts validate file sizes before upload
-
-## Network Discovery
-
-The deployment system uses an improved network scanner that:
-- **Fase 1 (Port Scan)**: Escanea toda la red /24 detectando dispositivos con puerto 8266 abierto usando sockets
-- **Fase 2 (WebREPL Test)**: Prueba WebREPL en cada dispositivo detectado secuencialmente
-- **Sin límites artificiales**: Escanea todos los hosts (no solo 100)
-- **Optimizado para Termux/móviles**: Limita threads concurrentes a 100 para no saturar
-- **Verboso y claro**: Muestra progreso en ambas fases para debugging
-
-Esto soluciona el problema donde apps externas de escaneo encontraban el ESP32 pero el deploy no.
-
-## Deployment System
-
-The deployment system supports three modes:
-
-**Initial Setup** (`setup_initial.py` - USB, first time only):
-- Configures WebREPL password
-- Deploys complete working system (~20 files):
-  - Bootstrap: boot.py, webrepl_cfg.py, .env
-  - Base modules: main.py, config.py, wifi.py, ntp.py, app_loader.py
-  - Default app: blink/ (minimal LED test)
-- System is fully functional after this single command
-- Takes ~30-60 seconds (one time only)
-- LED starts blinking automatically after reboot
-- Requires physical USB connection
-
-**WiFi Mode** (`deploy_wifi.py`):
-- Uses WebREPL protocol
-- Auto-discovers ESP8266 IP or accepts explicit IP
-- Deploys base modules + specified app
-- Defaults to blink if no app specified
-- Verifies deployment by importing main.py
-- Optional post-deploy reboot
-- Use to change apps after initial setup
-
-**USB Mode** (`deploy_usb.py`):
-- Uses ampy for file transfer
-- Auto-detects serial ports (cross-platform)
-- Faster than WiFi for local development
-- Requires physical USB connection
-- Use to change apps or update code
-
-## Project-Specific Conventions
-
-- All modules have a `log(msg)` function with `[module_name]` prefix
-- All log functions call `sys.stdout.flush()` for reliable serial output
-- Apps expose a single `run(cfg)` entry point in their `__init__.py`
-- Error handling is defensive (try/except with continue operation)
-- Network operations feed WDT to prevent timeout during long operations
-- WiFi status codes are mapped to human-readable names for debugging
-
-## Location & Solar Calculations
-
-The gallinero app uses latitude/longitude from .env to calculate:
-- Sunrise/sunset times for the current day
-- Summer solstice (Dec 21 in southern hemisphere) daylight hours
-- Relay timing to simulate summer light patterns year-round
-
-Timezone is calculated from longitude (lon / 15).
-
-## App Architecture
-
-### Creating a New App
-
-All apps must follow this structure:
-
-```
-src/your_app/
-├── __init__.py          # Must export: from .main import run
-└── main.py (or any)     # Must have: def run(cfg): ...
-```
-
-**Requirements:**
-1. App directory in `src/`
-2. `__init__.py` that exports `run` function
-3. `run(cfg)` function that receives configuration dict
-4. App name added to `app_loader.py` conditional
-
-### Default Apps
-
-- **blink**: Minimal LED blink demo for initial setup/testing
-- **gallinero**: Production chicken coop automation
-- **heladera**: Reserved for future refrigerator automation
-
-Deploy with: `python3 tools/deploy_wifi.py <app_name>`
-
-## WebREPL Protocol Details (MicroPython 1.19)
-
-### Binary File Transfer Protocol
-
-El protocolo WebREPL usa mensajes WebSocket binarios para transferir archivos. Implementación basada en:
-- Código oficial: [webrepl_cli.py](https://github.com/micropython/webrepl/blob/master/webrepl_cli.py)
-- Servidor C: [modwebrepl.c](https://github.com/micropython/micropython/blob/master/extmod/modwebrepl.c)
-
-**Formato de Request (signature "WA"):**
+**Request (signature "WA"):**
 ```python
-WEBREPL_REQ_S = "<2sBBQLH64s"  # Struct format
-# - 2s: signature "WA" (client → server)
-# - B: opcode (1=PUT_FILE, 2=GET_FILE)
-# - B: reserved
-# - Q: reserved (8 bytes)
-# - L: file size (4 bytes)
-# - H: filename length (2 bytes)
-# - 64s: filename (max 64 bytes)
+WEBREPL_REQ_S = "<2sBBQLH64s"
+# WA + opcode(1=PUT/2=GET) + reserved(9B) + size(4B) + len(2B) + filename(64B)
 ```
 
-**Formato de Response (signature "WB"):**
+**Response (signature "WB"):**
 ```python
-# 4 bytes totales:
-# - 2 bytes: signature "WB" (server → client)
-# - 2 bytes: status code (0 = éxito)
+# 2B signature "WB" + 2B status (0=ok)
 ```
 
 ### CRÍTICO: No mezclar protocolos
 
-**Problema:** Mezclar comandos de texto (`execute()`) con protocolo binario causa errores:
-- "Respuesta WebREPL muy corta: 2 bytes"
-- "a bytes-like object is required, not 'str'"
-- Datos residuales en buffer WebSocket
+**Problema:** Mezclar `execute()` + `send_file()` → errores buffer WebSocket.
 
-**Solución:**
-1. Usar SOLO comandos de texto (execute) O protocolo binario, nunca mezclados
-2. Limpiar buffer WebSocket antes de transferencias binarias (`_clean_buffer_before_binary_transfer()`)
-3. WebREPL crea directorios automáticamente cuando filename contiene "/" - NO usar `os.mkdir()` manualmente
+**Solución (implementada en webrepl_client.py):**
+1. **NUNCA** `execute()` antes de `send_file()`
+2. Limpiar buffer: `_clean_buffer_before_binary_transfer()`
+3. WebREPL crea dirs automáticamente (NO `os.mkdir()`)
+4. Enviar CTRL-C al conectar (interrumpe programa)
 
 ### Implementación Robusta
 
-La implementación en `tools/common/webrepl_client.py` incluye:
-- **Retry logic**: Hasta 10 intentos para encontrar signature "WB"
-- **Buffer cleaning**: Descarta datos residuales del REPL antes de transferencias
-- **Type handling**: Convierte str→bytes para MicroPython 1.19 inconsistencies
-- **Automatic directory creation**: Confía en WebREPL para crear subdirectorios
+- Retry logic (10 intentos para "WB")
+- Buffer cleaning (descarta residuos REPL)
+- Type handling (str→bytes MicroPython 1.19)
+- Auto-reconexión WebSocket
+- Timeout largo (10s WiFi lento)
 
-## Common Gotchas
+### Limitaciones
+- Max 8KB por archivo (ESP8266 RAM limitada)
+- Filename max 64B
+- Single-threaded (bloquea app)
+- WiFi required
 
-- **First setup takes 30-60 seconds:** setup_initial.py deploys complete system (~20 files). This is normal and only happens once. LED should blink automatically when finished.
-- **"Respuesta WebREPL muy corta"**: Causado por mezclar comandos de texto con protocolo binario. NUNCA usar `client.execute()` antes de `send_file()`. WebREPL crea directorios automáticamente.
-- **Deploy falla en archivos de app**: Asegurar que buffer WebSocket está limpio antes de protocolo binario. La implementación actual limpia automáticamente.
-- WDT timeout during WiFi connection on slow/hidden networks → Use wdt_callback parameter
-- WebREPL not starting → Check IP address is valid and WiFi connected
-- Import errors after deploy → Ensure __init__.py files are uploaded first
-- Tests failing with module not found → Check sys.modules mocking
-- .env changes not reflecting → File cached on ESP8266, redeploy or edit directly via WebREPL
+---
+
+## 4️⃣ MicroPython ESP8266 - Single Process
+
+### CRÍTICO: NO hay threads reales
+
+- **Single process:** WiFi + WebREPL + App comparten hilo
+- **Blocking I/O:** Todo secuencial
+- `_thread` opcional y muy limitado
+
+### Implicaciones
+
+**WiFi + WebREPL + App secuencial:**
+```python
+# main.py
+wifi.connect_wifi()    # Bloquea
+ntp.sync_ntp()         # Bloquea
+app_loader.load_app()  # Bloquea en loop
+```
+
+**WebREPL solo funciona si app NO bloquea:**
+- `while True` sin `sleep()` → WebREPL muere
+- Apps DEBEN tener sleeps regulares
+
+**WiFi monitoring (opcional):**
+```python
+try:
+    import _thread
+    _thread.start_new_thread(wifi.monitor_wifi, (30,))
+except: pass  # Sistema funciona sin threading
+```
+
+### MicroPython Internals
+
+**WiFi:**
+```python
+import network
+wlan = network.WLAN(network.STA_IF)  # Station
+ap = network.WLAN(network.AP_IF)     # Hotspot
+```
+
+**WebREPL:**
+```python
+import webrepl
+webrepl.start()  # Puerto 8266
+```
+
+**WDT:**
+```python
+from machine import WDT
+wdt = WDT(timeout=30000)
+wdt.feed()
+```
+
+**Hotspot fallback:**
+```python
+if not wlan.isconnected():
+    ap.active(True)
+    ap.config(essid=SSID, password=PWD)
+```
+
+**Memory:**
+```python
+import gc
+gc.collect()
+gc.mem_free()
+```
+
+Estrategia: `gc.collect()` después de cada operación mayor, importar módulos on-demand, archivos <8KB.
+
+---
+
+## 5️⃣ Entorno de Desarrollo
+
+### Python 3.9 venv
+
+```bash
+python3.9 -m venv env
+source env/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+```
+
+**requirements.txt:** ampy, esptool, dotenv, pytest, pytest-timeout, pyserial, websocket-client
+
+### pytest
+
+Mock MicroPython modules:
+```python
+from unittest.mock import MagicMock, patch
+mocks = {'machine': MagicMock(), '_thread': MagicMock(), ...}
+with patch.dict('sys.modules', mocks):
+    import main
+```
+
+Ejecutar: `pytest`, `pytest tests/test_main.py -v`
+
+### Termux (Android)
+
+**Setup:**
+```bash
+pkg install python git
+git clone <repo>
+python -m venv env && source env/bin/activate
+pip install -r requirements.txt
+```
+
+**Widgets:** Scripts en `~/.shortcuts/` → Termux:Widget app
+
+**Ventajas:** Deploy desde móvil, debugging in-situ, menor latencia WiFi
+
+### PC Development
+
+```bash
+./pc/deploy.sh gallinero           # → tools/deploy_usb.py
+python3 tools/open_repl.py         # REPL
+screen /dev/ttyUSB0 115200         # Monitor serial
+```
+
+---
+
+## 6️⃣ Detalles Implementación
+
+### Boot Sequence
+```
+Power → boot.py (WDT 30s) → main.py (WDT 60s, WiFi, NTP) → app (loop con sleep)
+```
+
+### Config (.env)
+
+Prioridad: `.env` → `.env.example` → hardcoded defaults
+
+```bash
+WIFI_SSID="libre gallinero"
+WIFI_PASSWORD="huevos1"
+WEBREPL_IP=192.168.1.123
+WEBREPL_PASSWORD=admin
+LATITUDE=-31.4167
+LONGITUDE=-64.1833
+APP=blink  # gallinero, heladera
+```
+
+### Network Discovery
+
+**Fase 1:** Port scan toda la red /24 (puerto 8266, max 100 threads)
+**Fase 2:** Test WebREPL secuencial
+**Smart:** IP cache → .env → scan → 192.168.4.1 fallback
+
+### App Structure
+
+```
+src/app_name/
+├── __init__.py  # from .main import run
+└── main.py      # def run(cfg): ...
+```
+
+Deploy: `python3 tools/deploy_wifi.py <app_name> [ip]`
+
+### Logging Pattern
+
+```python
+import sys
+def log(msg):
+    print(f"[module] {msg}")
+    if hasattr(sys.stdout, 'flush'): sys.stdout.flush()
+```
+
+### Common Gotchas
+
+1. Setup tarda 30-60s (normal, ~20 archivos USB)
+2. "Respuesta corta" → mezclar execute()/send_file()
+3. Deploy falla → buffer sucio
+4. WebREPL no responde → app sin sleep()
+5. WDT timeout → operación larga sin feed()
+6. OutOfMemory → archivo >8KB o no gc.collect()
+7. Import errors → orden upload (__init__.py primero)
+8. .env no refleja → archivo cacheado ESP8266
+
+---
+
+## Commands
+
+**IMPORTANTE:** Todos los comandos requieren venv activado:
+```bash
+source env/bin/activate  # Activar venv PRIMERO
+```
+
+Luego ejecutar:
+```bash
+# Dev
+pytest
+
+# Setup inicial (USB, 1 vez)
+python tools/setup_initial.py
+
+# Deploy apps (WiFi)
+python tools/deploy_wifi.py gallinero [ip]
+python tools/deploy_app.py heladera      # Con cache
+
+# Deploy USB
+python tools/deploy_usb.py gallinero
+
+# Utils
+python tools/clean_esp8266.py
+python tools/open_repl.py
+```
+
+---
+
+## Para Claude: Prioridades
+
+1. **MÁXIMA**: Protocolo WebREPL
+   - NUNCA mezclar execute()/send_file()
+   - SIEMPRE limpiar buffer
+   - Confiar en WebREPL para dirs
+
+2. **ALTA**: MicroPython compat
+   - Single process (no threading)
+   - gc.collect() frecuente
+   - Archivos <8KB
+
+3. **MEDIA**: Deployment
+   - Tools rápidos/confiables
+   - Network discovery robusto
+   - IP caching mobile
+
+4. **Testing**: Mock MicroPython (machine, _thread, network, gc)
+
+5. **Flow**: Setup inicial (USB, 1 vez) → Deploy apps (WiFi, repetible)
+
+**NUNCA asumir que es proyecto de automatización.** Es framework de deployment.
