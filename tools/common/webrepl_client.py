@@ -849,6 +849,56 @@ class WebREPLClient:
             logger.error(f"Error ejecutando comando: {e}", exc_info=True)
             return ""
     
+    def reset(self):
+        """
+        Reinicia el ESP8266 usando machine.reset() vía WebREPL.
+        
+        Según documentación oficial MicroPython 1.19:
+        - machine.reset() realiza un hard reset completo del dispositivo
+        - Equivalente a presionar el botón RESET físicamente
+        - Reinicia todos los periféricos de hardware
+        
+        El método:
+        1. Envía Ctrl-C para interrumpir el programa actual
+        2. Importa el módulo machine
+        3. Ejecuta machine.reset() que reinicia inmediatamente el dispositivo
+        
+        Nota: No espera respuesta porque el dispositivo se reinicia inmediatamente.
+        La conexión WebREPL se perderá después de ejecutar este método.
+        
+        Returns:
+            bool: True si el comando se envió exitosamente, False en caso de error
+        """
+        if not self.ws:
+            if self.verbose:
+                print(f"{RED}❌ No hay conexión WebREPL activa{NC}")
+            logger.warning("Intento de reset sin conexión WebREPL")
+            return False
+        
+        logger.info("Reiniciando ESP8266 con machine.reset()")
+        
+        try:
+            # Paso 1: Interrumpir programa actual con Ctrl-C
+            self.ws.send("\x03")  # Ctrl-C
+            time.sleep(0.3)
+            
+            # Paso 2: Importar módulo machine
+            self.ws.send("import machine\r\n")
+            time.sleep(0.2)
+            
+            # Paso 3: Ejecutar reset (el dispositivo se reinicia inmediatamente)
+            self.ws.send("machine.reset()\r\n")
+            time.sleep(0.5)  # Dar tiempo para que el comando se envíe
+            
+            logger.info("Comando machine.reset() enviado exitosamente")
+            return True
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"{YELLOW}⚠️  Error enviando comando de reset: {e}{NC}")
+            logger.error(f"Error enviando reset: {e}", exc_info=True)
+            return False
+    
     def download_file(self, remote_name, local_path):
         """
         Descarga un archivo del ESP8266 usando WebREPL.

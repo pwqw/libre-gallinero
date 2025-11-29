@@ -349,13 +349,8 @@ def main():
         client.ip = ip_arg or cached_ip_pre or client.config.get('WEBREPL_IP')
         if client.connect():
             try:
-                # Enviar comando de reset
-                client.ws.send("\x03")  # Ctrl-C
-                time.sleep(0.3)
-                client.ws.send("import machine\r\n")
-                time.sleep(0.2)
-                client.ws.send("machine.reset()\r\n")
-                time.sleep(0.5)
+                # Usar método centralizado reset() (DRY)
+                client.reset()
             except:
                 pass
             finally:
