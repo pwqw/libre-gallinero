@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
-read_logs.py - Lee logs del ESP8266 en tiempo real via WebREPL
+read_logs.py - Lee logs del ESP8266 en tiempo real via WebREPL (NO INVASIVO)
 
 Uso:
-    python3 tools/read_logs.py              # Auto-descubre IP
+    python3 tools/read_logs.py              # Auto-descubre IP, modo pasivo
     python3 tools/read_logs.py heladera     # Usa IP cacheada de heladera
     python3 tools/read_logs.py 192.168.1.50 # IP específica
+    python3 tools/read_logs.py --restart    # Reinicia main.py (invasivo)
+    python3 tools/read_logs.py --history    # Muestra buffer histórico
+
+Modo por defecto (NO INVASIVO):
+    - NO reinicia el programa
+    - Solo lee stdout actual sin interrumpir
+    - Mantiene conexión WiFi estable
 """
 
 import sys
@@ -30,17 +37,23 @@ NC = '\033[0m'  # No Color
 
 def main():
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
-    print(f"{CYAN}📡 ESP8266 Log Reader via WebREPL{NC}")
+    print(f"{CYAN}📡 ESP8266 Log Reader (NO INVASIVO){NC}")
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
     # Parsear argumentos
     app_name = None
     ip_arg = None
+    restart_mode = False
+    history_mode = False
 
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        # Detectar si es IP o nombre de app
-        if '.' in arg and any(c.isdigit() for c in arg):
+    for arg in sys.argv[1:]:
+        if arg == '--restart':
+            restart_mode = True
+            print(f"{YELLOW}⚠️  MODO INVASIVO: Reiniciará main.py{NC}\n")
+        elif arg == '--history':
+            history_mode = True
+            print(f"{BLUE}📜 MODO HISTÓRICO: Leyendo buffer{NC}\n")
+        elif '.' in arg and any(c.isdigit() for c in arg):
             ip_arg = arg
             print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
         else:
@@ -69,32 +82,88 @@ def main():
     if not client.connect():
         sys.exit(1)
 
-    print(f"\n{GREEN}✅ Conectado - Leyendo logs en tiempo real{NC}")
+    # Modo histórico: leer buffer y salir
+    if history_mode:
+        print(f"\n{GREEN}✅ Conectado - Leyendo buffer histórico{NC}\n")
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+        try:
+            # Limpiar buffer primero
+            client.ws.settimeout(0.2)
+            try:
+                while True:
+                    client.ws.recv()
+            except:
+                pass
+
+            # Obtener buffer histórico
+            client.ws.settimeout(5.0)
+            client.ws.send("import logger\r\n")
+            time.sleep(0.3)
+            client.ws.send("print(logger.get())\r\n")
+            time.sleep(1.0)
+
+            # Leer respuesta
+            history_output = ""
+            try:
+                for _ in range(10):
+                    data = client.ws.recv()
+                    if isinstance(data, bytes):
+                        history_output += data.decode('utf-8', errors='replace')
+                    else:
+                        history_output += data
+            except:
+                pass
+
+            # Mostrar historial
+            if history_output:
+                print(f"{GREEN}{history_output}{NC}")
+            else:
+                print(f"{YELLOW}⚠️  No hay logs en buffer (o logger no inicializado){NC}")
+
+            print(f"\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        finally:
+            client.close()
+            print(f"{GREEN}👋 Desconectado{NC}\n")
+        return
+
+    # Modo normal o restart
+    mode_desc = "Leyendo logs en tiempo real (PASIVO)" if not restart_mode else "Reiniciando y leyendo logs (INVASIVO)"
+    print(f"\n{GREEN}✅ Conectado - {mode_desc}{NC}")
     print(f"{YELLOW}   Presiona Ctrl-C para salir{NC}\n")
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
     try:
-        # Interrumpir cualquier programa en ejecución
-        client.ws.send("\x03")  # Ctrl-C
-        time.sleep(0.3)
+        if restart_mode:
+            # MODO INVASIVO: Interrumpir y reiniciar
+            client.ws.send("\x03")  # Ctrl-C
+            time.sleep(0.3)
 
-        # Limpiar buffer
-        try:
-            client.ws.settimeout(0.2)
-            while True:
-                client.ws.recv()
-        except:
-            pass
+            # Limpiar buffer
+            try:
+                client.ws.settimeout(0.2)
+                while True:
+                    client.ws.recv()
+            except:
+                pass
 
-        # Configurar timeout más largo para lectura continua
-        client.ws.settimeout(1.0)
-
-        # Iniciar el programa y leer logs
-        print(f"{BLUE}🚀 Iniciando main.py...{NC}\n")
-        client.ws.send("import main\r\n")
-        time.sleep(0.5)
-        client.ws.send("main.main()\r\n")
-        time.sleep(0.3)
+            # Reiniciar programa
+            print(f"{YELLOW}🔄 Reiniciando main.py...{NC}\n")
+            client.ws.settimeout(1.0)
+            client.ws.send("import main\r\n")
+            time.sleep(0.5)
+            client.ws.send("main.main()\r\n")
+            time.sleep(0.3)
+        else:
+            # MODO PASIVO: Solo leer stdout actual sin interrumpir
+            print(f"{GREEN}📖 Modo pasivo: leyendo stdout sin interrumpir programa{NC}\n")
+            # Limpiar buffer antiguo
+            try:
+                client.ws.settimeout(0.1)
+                while True:
+                    client.ws.recv()
+            except:
+                pass
+            client.ws.settimeout(1.0)
 
         # Leer logs continuamente
         while True:
@@ -132,14 +201,18 @@ def main():
         print(f"\n\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
         print(f"{YELLOW}🛑 Deteniendo lectura de logs...{NC}")
 
-        # Detener programa en ESP8266
-        try:
-            client.ws.send("\x03")  # Ctrl-C
-            time.sleep(0.3)
-            print(f"{GREEN}✅ Programa detenido en ESP8266{NC}")
-            print(f"{BLUE}💡 El ESP8266 está ahora en el REPL{NC}")
-        except:
-            pass
+        if restart_mode:
+            # Solo interrumpir si estábamos en modo restart
+            try:
+                client.ws.send("\x03")  # Ctrl-C
+                time.sleep(0.3)
+                print(f"{GREEN}✅ Programa detenido en ESP8266{NC}")
+                print(f"{BLUE}💡 El ESP8266 está ahora en el REPL{NC}")
+            except:
+                pass
+        else:
+            print(f"{GREEN}✅ Programa continúa corriendo en ESP8266{NC}")
+            print(f"{BLUE}💡 No se interrumpió el proceso{NC}")
 
     finally:
         client.close()

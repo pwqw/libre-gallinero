@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # -*- coding: utf-8 -*-
-# Shortcut para leer logs del ESP8266 en tiempo real
+# Shortcut para leer logs del ESP8266 (MODO NO INVASIVO)
 
 set -e
 set -u
@@ -10,9 +10,11 @@ cd "$HOME/libre-gallinero"
 printf "\n"
 printf "╔════════════════════════════════════════╗\n"
 printf "║       🐔  LIBRE GALLINERO  🐔          ║\n"
-printf "║         LEER LOGS ESP8266              ║\n"
+printf "║      LEER LOGS ESP8266 (PASIVO)        ║\n"
 printf "╚════════════════════════════════════════╝\n"
 printf "\n"
 
-# Ejecutar script de logs
+# Ejecutar script de logs en modo no invasivo (por defecto)
+# Para modo invasivo usar: python3 tools/read_logs.py heladera --restart
+# Para ver historial usar: python3 tools/read_logs.py heladera --history
 exec python3 tools/read_logs.py heladera
