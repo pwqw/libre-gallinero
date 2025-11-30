@@ -1,16 +1,19 @@
 # main.py - Main orchestrator
-import logger
 _wdt=None
+_logger=None
 def log(msg):
- logger.log('main',msg)
+ if _logger:_logger.log('main',msg)
+ else:print(f"[main] {msg}")
 def feed_wdt():
     global _wdt
     if _wdt:
         try:_wdt.feed()
         except:pass
 def main():
-    global _wdt
+    global _wdt,_logger
     import gc
+    import logger
+    _logger=logger
     logger.init(100)
     try:
         from machine import WDT
