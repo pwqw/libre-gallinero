@@ -42,6 +42,9 @@ def main():
     feed_wdt()
     import ntp
     longitude=cfg.get('LONGITUDE',-64.1833)
+    # Convert to float if string (from .env config)
+    if isinstance(longitude, str):
+        longitude=float(longitude)
     ntp_ok=ntp.sync_ntp(longitude=longitude)
     if not ntp_ok:log("⚠ NTP falló")
     feed_wdt()

@@ -6,8 +6,9 @@ import gc
 
 def import_main_safely(capsys=None, **kwargs):
     """Helper para importar main.py de forma segura con todos los mocks necesarios"""
-    # Limpiar módulo si ya existe
-    sys.modules.pop('src.main', None)
+    # Limpiar módulo si ya existe (conftest.py agrega src/ al path, así que importamos como 'main')
+    sys.modules.pop('main', None)
+    sys.modules.pop('src.main', None)  # Por si acaso
     sys.modules.pop('config', None)
     sys.modules.pop('wifi', None)
     sys.modules.pop('ntp', None)
@@ -77,7 +78,8 @@ def import_main_safely(capsys=None, **kwargs):
              'app_loader': mock_app_loader,
          }):
         # Importar main - esto ejecutará el código al final del archivo
-        from src import main
+        # conftest.py agrega src/ al path, así que importamos directamente
+        import main
         # Capturar la salida dentro del contexto si se proporciona capsys
         captured_output = None
         if capsys:
@@ -129,21 +131,15 @@ class TestLog:
     @pytest.mark.timeout(10)
     def test_log_handles_no_flush(self, capsys):
         """Test que log() maneja cuando flush no está disponible"""
+        # Usar import_main_safely que maneja todos los mocks correctamente
         mock_stdout = MagicMock()
         del mock_stdout.flush
-        sys.modules.pop('src.main', None)
-        with patch('sys.stdout', mock_stdout), \
-             patch.object(gc, 'mem_free', return_value=50000, create=True), \
-             patch.object(sys, 'print_exception', create=True), \
-             patch.dict('sys.modules', {'machine': MagicMock(), '_thread': MagicMock()}), \
-             patch('src.config.load_config', return_value={'APP': 'blink'}), \
-             patch('src.wifi.connect_wifi'), \
-             patch('src.wifi.monitor_wifi'), \
-             patch('_thread.start_new_thread'), \
-             patch('src.ntp.sync_ntp', return_value=True), \
-             patch('src.app_loader.load_app'):
-            from src import main
-            # No debería lanzar excepción
+        
+        main, _ = import_main_safely(capsys=None)
+        
+        # Reemplazar sys.stdout con nuestro mock que no tiene flush
+        with patch('sys.stdout', mock_stdout):
+            # No debería lanzar excepción cuando flush no está disponible
             main.log("test")
 
 

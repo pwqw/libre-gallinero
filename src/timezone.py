@@ -18,6 +18,7 @@ def get_timezone_offset(longitude):
     Args:
         longitude: Longitude in degrees (-180 to 180)
                   Negative = West, Positive = East
+                  Can be str or float (converted automatically)
 
     Returns:
         int: Timezone offset in hours from UTC
@@ -28,6 +29,9 @@ def get_timezone_offset(longitude):
         0.0 (Greenwich) → 0 hours
         120.0 (China) → 8 hours
     """
+    # Convert to float if string (from .env config)
+    if isinstance(longitude, str):
+        longitude = float(longitude)
     # Timezone = longitude / 15 degrees per hour
     # Round to nearest hour for simplicity
     return int(round(longitude / 15.0))
