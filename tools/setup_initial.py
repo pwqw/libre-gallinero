@@ -165,6 +165,55 @@ def check_port_permissions(port):
         return True
 
 
+def auto_reset_esp8266(port, method='soft'):
+    """
+    Resetea ESP8266 automáticamente vía puerto serie
+
+    Args:
+        port: Puerto serie (ej: /dev/ttyUSB0)
+        method: 'soft' (CTRL-D reboot) o 'hard' (DTR/RTS reset)
+
+    Returns:
+        bool: True si reset exitoso, False si falló
+    """
+    import serial
+    import time
+
+    try:
+        if method == 'soft':
+            # Soft reset via CTRL-D (MicroPython soft reboot)
+            print(f"{BLUE}🔄 Reseteando ESP8266 (soft reset - CTRL-D)...{NC}")
+            ser = serial.Serial(port, 115200, timeout=1)
+            time.sleep(0.1)
+            ser.write(b'\x04')  # CTRL-D = soft reboot
+            time.sleep(2)  # Esperar boot completo
+            ser.close()
+            print(f"{GREEN}✅ Reset automático exitoso{NC}")
+            return True
+
+        elif method == 'hard':
+            # Hard reset via DTR/RTS (hardware reset)
+            print(f"{BLUE}🔄 Reseteando ESP8266 (hard reset - DTR/RTS)...{NC}")
+            ser = serial.Serial(port, 115200)
+            ser.setDTR(False)  # DTR low = reset active
+            ser.setRTS(True)   # RTS high
+            time.sleep(0.1)
+            ser.setDTR(True)   # DTR high = reset release
+            ser.setRTS(False)  # RTS low
+            time.sleep(0.5)    # Esperar estabilización
+            ser.close()
+            print(f"{GREEN}✅ Reset automático exitoso{NC}")
+            return True
+        else:
+            print(f"{RED}❌ Método desconocido: {method}{NC}")
+            return False
+
+    except Exception as e:
+        print(f"{YELLOW}⚠️  Reset automático falló: {e}{NC}")
+        print(f"{YELLOW}   Reinicia manualmente (desconecta/reconecta USB){NC}")
+        return False
+
+
 def main():
     print(f"{BLUE}🔧 Setup inicial WebREPL para ESP8266{NC}\n")
 
@@ -341,15 +390,50 @@ def main():
     print(f"   python3 tools/deploy_wifi.py gallinero  # App gallinero")
     print(f"   python3 tools/deploy_wifi.py heladera   # App heladera")
     print(f"   python3 tools/deploy_wifi.py blink      # Volver a blink\n")
-    
+
+    # Opciones de reinicio
+    print(f"{YELLOW}{'='*60}{NC}")
+    print(f"{YELLOW}Opciones de reinicio:{NC}")
+    print(f"  {GREEN}1{NC}. Automático (CTRL-D soft reset) {BLUE}← Recomendado{NC}")
+    print(f"  {GREEN}2{NC}. Automático (DTR/RTS hard reset)")
+    print(f"  {GREEN}3{NC}. Manual (desconecta/reconecta USB)")
+    print(f"{YELLOW}{'='*60}{NC}\n")
+
     try:
-        input(f"{BLUE}Presiona Enter cuando hayas reiniciado el ESP8266...{NC}")
+        choice = input(f"{BLUE}Selecciona opción [1-3] (default=1): {NC}").strip() or '1'
     except (EOFError, KeyboardInterrupt):
         print(f"\n{YELLOW}Setup completado. Reinicia el ESP8266 manualmente.{NC}")
         return
-    
+
+    reset_success = False
+
+    if choice == '1':
+        reset_success = auto_reset_esp8266(port, method='soft')
+    elif choice == '2':
+        reset_success = auto_reset_esp8266(port, method='hard')
+    elif choice == '3':
+        try:
+            input(f"{BLUE}Presiona Enter cuando hayas reiniciado manualmente...{NC}")
+            reset_success = True
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{YELLOW}Setup completado. Reinicia el ESP8266 manualmente.{NC}")
+            return
+    else:
+        print(f"{YELLOW}⚠️  Opción inválida, usando reset manual{NC}")
+        try:
+            input(f"{BLUE}Presiona Enter cuando hayas reiniciado manualmente...{NC}")
+            reset_success = True
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{YELLOW}Setup completado. Reinicia el ESP8266 manualmente.{NC}")
+            return
+
+    if not reset_success:
+        print(f"\n{YELLOW}Monitor serial NO se abrirá automáticamente{NC}")
+        print(f"   Reinicia manualmente y ejecuta: python3 tools/open_repl.py")
+        return
+
     print(f"\n{BLUE}📡 Abriendo monitor serial...{NC}\n")
-    
+
     # Abrir monitor serial (BLOCKING)
     monitor = SerialMonitor(port=port, baudrate=115200, max_reconnect_attempts=5)
     monitor.start()
