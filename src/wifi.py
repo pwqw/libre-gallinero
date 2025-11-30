@@ -45,13 +45,15 @@ def _start_ap_fallback(cfg):
         log(f"✗ AP: {e}")
         return False
 def _start_webrepl(ip):
+    """Inicia WebREPL CRÍTICO: WiFi primero"""
     try:
         import webrepl,gc
         webrepl.start()
         log(f"✅ WebREPL: ws://{ip}:8266")
         gc.collect()
         log(f"Mem: {gc.mem_free()} bytes")
-    except:pass
+    except Exception as e:
+        log(f"⚠ WebREPL error: {e}")
 def _check_ip_range(ip):
     if not ip.startswith('192.168.0.'):log("⚠ IP fuera rango")
 def _wdt_feed():

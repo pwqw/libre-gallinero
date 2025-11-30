@@ -23,22 +23,24 @@ def main():
     gc.collect()
     log("=== Iniciando ===")
     log(f"Mem: {gc.mem_free()} bytes")
-    
+
     import config
     cfg=config.load_config()
     app_name=cfg.get('APP','blink')
     log(f"App: {app_name}")
     gc.collect()
-    log("Conectando WiFi...")
-    feed_wdt()
-    import wifi
-    wifi.connect_wifi(cfg,wdt_callback=feed_wdt)
-    log(f"Mem(post-WiFi): {gc.mem_free()}")
+
+    # WiFi ya conectado en boot.py (patrón oficial MicroPython)
+    # Solo verificamos estado
     try:
-        import _thread
-        _thread.start_new_thread(wifi.monitor_wifi,(30,))
-        log("Monitor WiFi OK")
+        import network
+        wlan=network.WLAN(network.STA_IF)
+        if wlan.isconnected():
+            log(f"WiFi: {wlan.ifconfig()[0]}")
+        else:
+            log("⚠ WiFi no conectado (revisar boot.py)")
     except:pass
+
     feed_wdt()
     import ntp
     longitude=cfg.get('LONGITUDE',-64.1833)
@@ -49,21 +51,10 @@ def main():
     if not ntp_ok:log("⚠ NTP falló")
     feed_wdt()
     gc.collect()
-    try:
-        import network
-        wlan=network.WLAN(network.STA_IF)
-        wifi_ok=wlan.isconnected()
-        wifi_ip=wlan.ifconfig()[0]if wifi_ok else None
-    except:
-        wifi_ok=False
-        wifi_ip=None
-    mem=gc.mem_free()
     log("="*40)
     log("SISTEMA LISTO")
-    log(f"WiFi:{'✓'if wifi_ok else'✗'} {wifi_ip if wifi_ip else'No'}")
-    log(f"WebREPL:{'✓'if wifi_ok else'✗'}")
     log(f"NTP:{'✓'if ntp_ok else'✗'}")
-    log(f"Mem:{mem}")
+    log(f"Mem:{gc.mem_free()}")
     log(f"App:{app_name}")
     log("="*40)
     log("Cargando app...")
