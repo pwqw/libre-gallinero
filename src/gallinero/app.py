@@ -2,9 +2,9 @@
 import sys
 import time
 import gc
-from .solar import calc_sun_times
-from .logic import relay_ponedoras_state, relay_pollitos_state
-from . import hardware
+from gallinero.solar import calc_sun_times
+from gallinero.logic import relay_ponedoras_state, relay_pollitos_state
+from gallinero import hardware
 
 def get_local_time(cfg):
     """Hora local ajustada por zona"""

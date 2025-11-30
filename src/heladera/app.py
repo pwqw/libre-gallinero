@@ -6,7 +6,7 @@ try:
     import machine
     import time
     import gc
-    from . import state as state_module
+    from heladera import state as state_module
 except ImportError:
     print("[heladera/app] ERROR: Módulos MicroPython no encontrados")
 

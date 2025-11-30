@@ -7,7 +7,7 @@ def sync_ntp(longitude=None):
     log("=== NTP ===")
     tz_offset=0
     if longitude is not None:
-        from . import timezone as tz_module
+        import timezone as tz_module
         tz_offset=tz_module.get_timezone_offset(longitude)
         log(f"TZ: UTC{tz_offset:+d}")
     try:

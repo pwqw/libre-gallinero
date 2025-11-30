@@ -35,7 +35,7 @@ def calc_sun_times(year, month, day, latitude=LATITUDE, longitude=LONGITUDE):
         hours = int(frac_day * 24)
         minutes = int((frac_day * 24 - hours) * 60)
         # Calcular timezone desde longitud
-        from .. import timezone as tz_module
+        import timezone as tz_module
         tz_offset = tz_module.get_timezone_offset(longitude)
         # Ajustar por zona horaria
         hours = (hours + tz_offset) % 24
