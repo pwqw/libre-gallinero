@@ -97,16 +97,15 @@ def main():
     # Loop principal cooperativo (NO bloquea WebREPL)
     import time
     tick_count=0
-    app_delay=0.5  # Delay base entre ticks
+    webrepl_delay=0.01  # 10ms: libera WebREPL frecuentemente
+    app_tick_interval=10  # Ejecutar app cada 10 loops (100ms)
 
     while True:
         feed_wdt()
 
-        # Ejecutar 1 tick de app (si existe)
-        if app_gen:
+        # Ejecutar app cada N loops (controla velocidad app)
+        if tick_count%app_tick_interval==0 and app_gen:
             try:
-                # Timeout implícito: si app no hace yield rápido, bloqueará
-                # pero al menos main.py tiene sleep() que libera WebREPL
                 next(app_gen)
             except StopIteration:
                 log("⚠ App terminó")
@@ -115,12 +114,12 @@ def main():
                 log(f"⚠ App error:{e}")
                 app_gen=None
 
-        # Sleep para liberar WebREPL
-        time.sleep(app_delay)
+        # Sleep corto → WebREPL responde rápido
+        time.sleep(webrepl_delay)
 
-        # Heartbeat periódico (cada ~60s)
         tick_count+=1
-        if tick_count%(int(60/app_delay))==0:
+        # Heartbeat cada ~60s (6000 ticks × 10ms)
+        if tick_count%6000==0:
             gc.collect()
             tm=time.localtime()
             log(f"💓 {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d} | Mem:{gc.mem_free()}")
