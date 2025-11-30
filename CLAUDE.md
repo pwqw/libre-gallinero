@@ -405,3 +405,4 @@ python tools/open_repl.py
 5. **Flow**: Setup inicial (USB, 1 vez) → Deploy apps (WiFi, repetible)
 
 **NUNCA asumir que es proyecto de automatización.** Es framework de deployment.
+- Los mensajes de commit: sin co-author, es español f"{tipo}({alcance}): {resumen}\n\n{detalles}".
