@@ -12,26 +12,28 @@ def log(msg):
 
 def load_app(app_name, cfg):
     """
-    Carga y ejecuta la app especificada.
-    
-    Cada app debe tener una función run(cfg) que implementa la lógica principal.
+    Carga app y retorna generador para ejecución cooperativa.
+
+    Cada app debe tener run(cfg) que retorna un generador (yield).
+    El generador ejecuta 1 tick por iteración, sin bloquear.
     """
     import gc
     log(f"App: {app_name}")
     gc.collect()
-    
+
     try:
         if app_name == 'blink':
             import blink
-            blink.run(cfg)
+            return blink.run(cfg)
         elif app_name == 'gallinero':
             import gallinero
-            gallinero.run(cfg)
+            return gallinero.run(cfg)
         elif app_name == 'heladera':
             import heladera
-            heladera.run(cfg)
+            return heladera.run(cfg)
         else:
             log(f"⚠ App desconocida: {app_name}")
+            return None
     except ImportError as e:
         log(f"⚠ Módulo no encontrado: {e}")
 
@@ -53,8 +55,11 @@ def load_app(app_name, cfg):
         except Exception:
             pass  # Can't diagnose, continue anyway
 
+        return None
+
     except Exception as e:
         log(f"✗ Error al cargar app: {e}")
         import sys
         sys.print_exception(e)
+        return None
 

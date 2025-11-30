@@ -22,106 +22,60 @@ class TestBlinkApp:
             assert blink is not None
     
     def test_blink_run_accepts_config(self):
-        """Test que run(cfg) acepta configuración"""
-        # Mock MicroPython modules
+        """Test que run(cfg) retorna generador"""
         mock_machine = MagicMock()
         mock_pin = MagicMock()
         mock_machine.Pin.return_value = mock_pin
-        mock_time = MagicMock()
         mock_gc = MagicMock()
-        
-        with patch.dict('sys.modules', {
-            'machine': mock_machine,
-            'time': mock_time,
-            'gc': mock_gc
-        }):
+
+        with patch.dict('sys.modules', {'machine': mock_machine, 'gc': mock_gc}):
             from src.blink import blink
-            
-            cfg = {
-                'LED_PIN': 2,
-                'LED_DELAY': 0.5
-            }
-            
-            # Mock sys.print_exception para MicroPython compatibility
-            with patch('sys.print_exception', Mock(), create=True):
-                # run() entra en un loop infinito, así que lo interrumpimos
-                with patch('time.sleep', side_effect=KeyboardInterrupt()):
-                    try:
-                        blink.run(cfg)
-                    except KeyboardInterrupt:
-                        pass  # Esperado
-            
-            # Verificar que se creó el Pin
+            cfg = {'LED_PIN': 2}
+
+            # run() retorna generador
+            gen = blink.run(cfg)
+            assert gen is not None
+
+            # Ejecutar 1 tick
+            next(gen)
+
+            # Verificar Pin creado
             mock_machine.Pin.assert_called_once_with(2, mock_machine.Pin.OUT)
     
     def test_blink_run_uses_defaults(self):
-        """Test que run(cfg) usa valores por defecto"""
-        # Mock MicroPython modules
+        """Test que run(cfg) usa pin por defecto"""
         mock_machine = MagicMock()
         mock_pin = MagicMock()
         mock_machine.Pin.return_value = mock_pin
-        mock_time = MagicMock()
         mock_gc = MagicMock()
-        
-        # Configurar sleep para que lance KeyboardInterrupt en la primera llamada
-        sleep_call_count = [0]
-        def sleep_side_effect(delay):
-            sleep_call_count[0] += 1
-            if sleep_call_count[0] == 1:
-                # Primera llamada, verificar que el delay es 0.5
-                assert delay == 0.5, f"Expected delay 0.5, got {delay}"
-            raise KeyboardInterrupt()
-        mock_time.sleep.side_effect = sleep_side_effect
-        
-        with patch.dict('sys.modules', {
-            'machine': mock_machine,
-            'time': mock_time,
-            'gc': mock_gc
-        }):
+
+        with patch.dict('sys.modules', {'machine': mock_machine, 'gc': mock_gc}):
             from src.blink import blink
-            
-            cfg = {}  # Config vacía, debe usar defaults
-            
-            # Mock sys.print_exception para MicroPython compatibility
-            with patch('sys.print_exception', Mock(), create=True):
-                # run() entra en un loop infinito, así que lo interrumpimos
-                try:
-                    blink.run(cfg)
-                except KeyboardInterrupt:
-                    pass  # Esperado
-            
-            # Verificar que se creó el Pin con valor por defecto (2)
+            cfg = {}  # Vacío → usa defaults
+
+            gen = blink.run(cfg)
+            next(gen)
+
+            # Pin por defecto = 2
             mock_machine.Pin.assert_called_once_with(2, mock_machine.Pin.OUT)
-            # Verificar que sleep fue llamado al menos una vez
-            assert mock_time.sleep.called, "time.sleep should have been called"
     
     def test_blink_run_handles_exceptions(self, capsys):
-        """Test que run(cfg) maneja excepciones correctamente"""
-        # Mock MicroPython modules
+        """Test que run(cfg) maneja excepciones"""
         mock_machine = MagicMock()
         mock_machine.Pin.side_effect = Exception("Pin error")
-        mock_time = MagicMock()
         mock_gc = MagicMock()
-        
-        with patch.dict('sys.modules', {
-            'machine': mock_machine,
-            'time': mock_time,
-            'gc': mock_gc
-        }):
+
+        with patch.dict('sys.modules', {'machine': mock_machine, 'gc': mock_gc}):
             from src.blink import blink
-            
-            cfg = {}
-            
-            # Mock sys.print_exception para MicroPython compatibility
-            mock_print_exception = Mock()
-            with patch('sys.print_exception', mock_print_exception, create=True):
-                blink.run(cfg)
-            
-            # Verificar que se imprimió el error
+            mock_print = Mock()
+            with patch('sys.print_exception', mock_print, create=True):
+                gen = blink.run({})
+                # Error ocurre en next(), generador maneja con try/except
+                list(gen)  # Consume generador hasta que termine
+
             captured = capsys.readouterr()
             assert '[blink] Error' in captured.out
-            # Verificar que se llamó sys.print_exception
-            mock_print_exception.assert_called_once()
+            mock_print.assert_called_once()
     
     def test_blink_init_exports_run(self):
         """Test que __init__.py exporta la función run"""

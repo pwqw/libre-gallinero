@@ -70,39 +70,63 @@ def main():
     log("Cargando app...")
     feed_wdt()
 
-    if thread_ok:
-        # Ejecutar app en thread separado → libera main thread para WebREPL
-        log("Modo: thread")
-        try:
-            import app_loader
-            def run_app():
-                try:
-                    app_loader.load_app(app_name,cfg)
-                except Exception as e:
-                    log(f"⚠ App thread:{e}")
-            _thread.start_new_thread(run_app,())
-            log("App en background")
-        except Exception as e:
-            log(f"⚠ Thread error:{e}")
-    else:
-        # Sin threading → app bloquea (WebREPL no funcionará)
-        log("Modo: blocking")
-        try:
-            import app_loader
-            app_loader.load_app(app_name,cfg)
-            log("App cargada")
-        except ImportError:
-            log("⚠ App no encontrada")
-        except Exception as e:
-            log(f"⚠ Error app:{e}")
-
-    feed_wdt()
-    log("Sistema operativo")
-
-if __name__ == '__main__' or True:
+    # Cargar app como generador (patrón cooperativo)
+    log("Modo: cooperativo")
+    app_gen=None
     try:
-        main()
+        import app_loader
+        app_gen=app_loader.load_app(app_name,cfg)
+        if app_gen is None:
+            log("⚠ App no retorna generador")
+        else:
+            log("App lista")
+    except ImportError:
+        log("⚠ App no encontrada")
     except Exception as e:
-        log(f"❌ Error fatal: {e}")
+        log(f"⚠ Error app:{e}")
         import sys
         sys.print_exception(e)
+
+    feed_wdt()
+    gc.collect()
+    log("="*40)
+    log("LOOP PRINCIPAL")
+    log(f"Mem:{gc.mem_free()}")
+    log("="*40)
+
+    # Loop principal cooperativo (NO bloquea WebREPL)
+    import time
+    tick_count=0
+    app_delay=0.5  # Delay base entre ticks
+
+    while True:
+        feed_wdt()
+
+        # Ejecutar 1 tick de app (si existe)
+        if app_gen:
+            try:
+                # Timeout implícito: si app no hace yield rápido, bloqueará
+                # pero al menos main.py tiene sleep() que libera WebREPL
+                next(app_gen)
+            except StopIteration:
+                log("⚠ App terminó")
+                app_gen=None
+            except Exception as e:
+                log(f"⚠ App error:{e}")
+                app_gen=None
+
+        # Sleep para liberar WebREPL
+        time.sleep(app_delay)
+
+        # Heartbeat periódico (cada ~60s)
+        tick_count+=1
+        if tick_count%(int(60/app_delay))==0:
+            gc.collect()
+            tm=time.localtime()
+            log(f"💓 {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d} | Mem:{gc.mem_free()}")
+
+if __name__=='__main__':
+    try:main()
+    except Exception as e:
+        log(f"❌ Error fatal:{e}")
+        import sys;sys.print_exception(e)

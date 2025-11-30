@@ -1,11 +1,10 @@
 # Blink App - LED blink example
 # App minimalista para setup inicial y testing básico
-# Interfaz común: run(cfg)
+# Patrón cooperativo: generador que hace yield en cada tick
 import sys
 
 try:
     import machine
-    import time
     import gc
 except ImportError:
     print("[blink] ERROR: Módulos MicroPython no encontrados")
@@ -15,52 +14,51 @@ LED_PIN = 2
 
 def run(cfg):
     """
-    Función principal de la app blink.
-    
-    App minimalista para setup inicial y testing básico.
-    Interfaz común para todas las apps: recibe cfg y ejecuta el loop principal.
+    Generador cooperativo para blink app.
+
+    Retorna generador que ejecuta 1 tick por next():
+    - Toggle LED
+    - yield (cede control a main.py)
+
+    NO usa while True ni sleep() → main.py controla timing.
     """
     print('\n=== blink/app ===')
     gc.collect()
-    
+
     try:
-        # Obtener configuración (opcional)
+        # Setup
         pin = int(cfg.get('LED_PIN', LED_PIN))
-        delay = float(cfg.get('LED_DELAY', 0.66))
-        
         led = machine.Pin(pin, machine.Pin.OUT)
-        print(f'[blink] LED inicializado en pin {pin}')
+        print(f'[blink] LED pin {pin} | Modo cooperativo')
         gc.collect()
-        
-        print('[blink] Loop principal...')
-        
-        # Contador para heartbeat periódico
+
+        # Loop generador (yield en cada tick)
+        state = False
         iteration = 0
-        # Heartbeat cada ~60 segundos (ajustar según delay)
-        # Con delay=0.5, cada 120 iteraciones = 60 segundos
-        heartbeat_interval = max(60, int(60 / delay)) if delay > 0 else 120
-        
+
         while True:
-            led.on()
-            time.sleep(delay)
-            led.off()
-            time.sleep(delay)
-            gc.collect()
-            
+            # Toggle LED
+            state = not state
+            led.value(state)
+
             iteration += 1
-            
-            # Heartbeat periódico para mantener serial activo
-            if iteration % heartbeat_interval == 0:
+
+            # Heartbeat periódico (cada ~120 ticks ≈ 60s con delay 0.5s)
+            if iteration % 120 == 0:
                 try:
+                    import time
                     tm = time.localtime()
                     mem = gc.mem_free()
-                    timestamp = f"{tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
-                    print(f'[blink] 💓 {timestamp} | Mem: {mem}B | Iter: {iteration}')
-                    # Flush para asegurar salida inmediata
+                    print(f'[blink] 💓 {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d} | Mem:{mem} | #{iteration}')
                     if hasattr(sys.stdout, 'flush'):
                         sys.stdout.flush()
+                    gc.collect()
                 except:
                     pass
+
+            # Ceder control a main.py (CRÍTICO para WebREPL)
+            yield
+
     except Exception as e:
         print(f'[blink] Error: {e}')
         sys.print_exception(e)

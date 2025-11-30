@@ -407,3 +407,5 @@ python tools/open_repl.py
 **NUNCA asumir que es proyecto de automatización.** Es framework de deployment.
 - Los mensajes de commit: sin co-author, es español f"{tipo}({alcance}): {resumen}\n\n{detalles}".
 - en micropython 1.19 se usan imports absolutas, y nunca relativas.
+- el esp8266 no soporta _thread
+- ahorrar size bytes src/*.py files porque van a la esp8266
