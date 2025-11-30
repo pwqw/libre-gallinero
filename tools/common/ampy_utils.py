@@ -259,7 +259,7 @@ def get_base_files_to_upload(project_dir, include_app=True, app_name='blink'):
     files = []
     
     # Base modules (required for boot sequence)
-    base_modules = ['boot.py', 'main.py', 'logger.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
+    base_modules = ['boot.py', 'main.py', 'logger.py', 'config.py', 'wifi.py', 'ntp.py', 'timezone.py', 'app_loader.py']
     for filename in base_modules:
         local_path = src_dir / filename
         if local_path.exists():
