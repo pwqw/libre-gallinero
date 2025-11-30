@@ -158,10 +158,10 @@ class TestRunAmpy:
         """Test ejecución exitosa de ampy"""
         mock_run.return_value = Mock(returncode=0, stderr='')
         result = run_ampy(['--port', '/dev/ttyUSB0', 'put', 'file.py', 'file.py'])
-        
+
         assert result is True
         mock_run.assert_called_once_with(['ampy', '--port', '/dev/ttyUSB0', 'put', 'file.py', 'file.py'],
-                                        capture_output=True, text=True)
+                                        capture_output=True, text=True, timeout=30)
     
     @patch('ampy_utils.subprocess.run')
     @patch('builtins.print')
