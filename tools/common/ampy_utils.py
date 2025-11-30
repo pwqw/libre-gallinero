@@ -10,27 +10,76 @@ import tempfile
 from pathlib import Path
 
 
-def run_ampy(cmd, verbose=True):
+def run_ampy(cmd, verbose=True, timeout=30):
     """
-    Ejecuta comando ampy.
-    
+    Ejecuta comando ampy con manejo robusto de errores.
+
     Args:
         cmd: Lista de argumentos para ampy (sin 'ampy' al inicio)
         verbose: Si True, muestra mensajes de error
-    
+        timeout: Timeout en segundos (default: 30)
+
     Returns:
         bool: True si el comando fue exitoso, False en caso contrario
     """
-    result = subprocess.run(['ampy'] + cmd, capture_output=True, text=True)
-    if result.returncode != 0:
+    try:
+        result = subprocess.run(
+            ['ampy'] + cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+
+        if result.returncode != 0:
+            if verbose:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+
+                # Detectar errores comunes de permisos
+                if 'Permission denied' in error_msg or 'could not open port' in error_msg.lower():
+                    port = None
+                    # Extraer puerto del comando si está disponible
+                    if '--port' in cmd:
+                        try:
+                            port_idx = cmd.index('--port')
+                            if port_idx + 1 < len(cmd):
+                                port = cmd[port_idx + 1]
+                        except (ValueError, IndexError):
+                            pass
+
+                    print(f"\n❌ ERROR DE PERMISOS: No tienes acceso al puerto serie")
+                    if port:
+                        print(f"   Puerto: {port}")
+                    print(f"\n💡 Solución:")
+                    print(f"   1. Agregar tu usuario al grupo 'dialout':")
+                    print(f"      sudo usermod -a -G dialout $USER")
+                    print(f"   2. Cerrar sesión y volver a entrar (o reiniciar)")
+                    print(f"   3. Verificar permisos: groups | grep dialout")
+                    print(f"\n   Alternativa temporal (NO recomendado):")
+                    print(f"      sudo chmod 666 {port if port else '/dev/ttyUSB0'}\n")
+                elif error_msg:
+                    print(f"❌ Error: {error_msg}")
+                else:
+                    print(f"❌ Error: ampy falló con código {result.returncode}")
+            return False
+        return True
+
+    except subprocess.TimeoutExpired:
         if verbose:
-            error_msg = result.stderr.strip() or result.stdout.strip()
-            if error_msg:
-                print(f"Error: {error_msg}")
-            else:
-                print(f"Error: ampy falló con código {result.returncode}")
+            print(f"❌ TIMEOUT: El comando tardó más de {timeout} segundos")
+            print(f"   Posibles causas:")
+            print(f"   • ESP8266 no responde (desconectado o en mal estado)")
+            print(f"   • Programa en ESP8266 bloqueado (sin sleep())")
+            print(f"   • Puerto serie incorrecto")
         return False
-    return True
+    except FileNotFoundError:
+        if verbose:
+            print(f"❌ ERROR: 'ampy' no está instalado")
+            print(f"   Instalar con: pip install adafruit-ampy")
+        return False
+    except Exception as e:
+        if verbose:
+            print(f"❌ Error inesperado: {e}")
+        return False
 
 
 def ensure_directory_exists(port, dir_name, verbose=True):

@@ -116,22 +116,71 @@ def verify_webrepl_config(port, password):
         return False
 
 
+def check_port_permissions(port):
+    """
+    Verifica que el usuario tiene permisos para acceder al puerto serie.
+
+    Args:
+        port: Ruta al dispositivo serie (ej: /dev/ttyUSB0)
+
+    Returns:
+        bool: True si tiene permisos, False en caso contrario
+    """
+    import stat
+
+    if not os.path.exists(port):
+        print(f"{RED}❌ Puerto {port} no existe{NC}")
+        print(f"   Verifica que el ESP8266 está conectado")
+        return False
+
+    # Verificar permisos de lectura/escritura
+    try:
+        # Intentar obtener información del archivo
+        st = os.stat(port)
+        mode = st.st_mode
+
+        # Verificar si tenemos permisos de lectura y escritura
+        if os.access(port, os.R_OK | os.W_OK):
+            return True
+
+        # No tenemos permisos
+        print(f"\n{RED}❌ ERROR DE PERMISOS: No tienes acceso al puerto {port}{NC}")
+        print(f"\n💡 Solución recomendada:")
+        print(f"   1. Agregar tu usuario al grupo 'dialout':")
+        print(f"      {YELLOW}sudo usermod -a -G dialout $USER{NC}")
+        print(f"   2. {YELLOW}Cerrar sesión y volver a entrar{NC} (o reiniciar)")
+        print(f"   3. Verificar: {YELLOW}groups | grep dialout{NC}")
+        print(f"\n   Alternativa rápida (temporal, NO recomendado):")
+        print(f"      {YELLOW}sudo chmod 666 {port}{NC}")
+        print(f"\n   Después de aplicar la solución, ejecuta este script nuevamente.\n")
+        return False
+
+    except PermissionError:
+        print(f"\n{RED}❌ ERROR: Sin permisos para acceder a {port}{NC}")
+        print(f"   Aplica las soluciones mostradas arriba")
+        return False
+    except Exception as e:
+        print(f"{YELLOW}⚠️  No se pudo verificar permisos de {port}: {e}{NC}")
+        # Continuamos porque puede que funcione de todas formas
+        return True
+
+
 def main():
     print(f"{BLUE}🔧 Setup inicial WebREPL para ESP8266{NC}\n")
-    
+
     # Verificar/instalar ampy
     try:
         import ampy.cli
     except ImportError:
         print(f"{YELLOW}Instalando adafruit-ampy...{NC}")
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'adafruit-ampy', 'pyserial'])
-    
+
     # Directorios del proyecto
     project_dir = Path(__file__).parent.parent
-    
+
     # Cargar configuración
     env = load_env(project_dir)
-    
+
     # Obtener puerto
     port = env.get('SERIAL_PORT') or find_port()
     if not port:
@@ -139,8 +188,12 @@ def main():
     if not port:
         print(f"{RED}❌ Puerto requerido{NC}")
         sys.exit(1)
-    
+
     print(f"{BLUE}[1/5] Puerto: {port}{NC}")
+
+    # Verificar permisos del puerto ANTES de empezar
+    if not check_port_permissions(port):
+        sys.exit(1)
     
     # Obtener password WebREPL
     webrepl_pass = env.get('WEBREPL_PASSWORD') or input(f"{YELLOW}Password WebREPL (default: admin): {NC}").strip() or "admin"
