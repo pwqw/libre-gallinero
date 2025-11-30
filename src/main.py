@@ -51,6 +51,16 @@ def main():
     if not ntp_ok:log("⚠ NTP falló")
     feed_wdt()
     gc.collect()
+
+    # Detectar soporte threading
+    thread_ok=False
+    try:
+        import _thread
+        thread_ok=True
+        log("Thread: ✓")
+    except:
+        log("Thread: ✗")
+
     log("="*40)
     log("SISTEMA LISTO")
     log(f"NTP:{'✓'if ntp_ok else'✗'}")
@@ -59,14 +69,33 @@ def main():
     log("="*40)
     log("Cargando app...")
     feed_wdt()
-    try:
-        import app_loader
-        app_loader.load_app(app_name,cfg)
-        log("App cargada")
-    except ImportError:
-        log("⚠ App no encontrada")
-    except Exception as e:
-        log(f"⚠ Error app:{e}")
+
+    if thread_ok:
+        # Ejecutar app en thread separado → libera main thread para WebREPL
+        log("Modo: thread")
+        try:
+            import app_loader
+            def run_app():
+                try:
+                    app_loader.load_app(app_name,cfg)
+                except Exception as e:
+                    log(f"⚠ App thread:{e}")
+            _thread.start_new_thread(run_app,())
+            log("App en background")
+        except Exception as e:
+            log(f"⚠ Thread error:{e}")
+    else:
+        # Sin threading → app bloquea (WebREPL no funcionará)
+        log("Modo: blocking")
+        try:
+            import app_loader
+            app_loader.load_app(app_name,cfg)
+            log("App cargada")
+        except ImportError:
+            log("⚠ App no encontrada")
+        except Exception as e:
+            log(f"⚠ Error app:{e}")
+
     feed_wdt()
     log("Sistema operativo")
 
