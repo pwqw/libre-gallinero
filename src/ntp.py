@@ -8,7 +8,7 @@ def sync_ntp(longitude=None):
     tz_offset=0
     if longitude is not None:
         import timezone as tz_module
-        tz_offset=tz_module.get_timezone_offset(longitude)
+        tz_offset=int(tz_module.get_timezone_offset(longitude))
         log(f"TZ: UTC{tz_offset:+d}")
     try:
         tm=utime.localtime()

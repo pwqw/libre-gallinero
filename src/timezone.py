@@ -30,7 +30,7 @@ def get_timezone_offset(longitude):
     """
     # Timezone = longitude / 15 degrees per hour
     # Round to nearest hour for simplicity
-    return round(longitude / 15.0)
+    return int(round(longitude / 15.0))
 
 def apply_timezone_to_time(time_tuple, tz_offset):
     """
