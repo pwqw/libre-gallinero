@@ -1,0 +1,22 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# -*- coding: utf-8 -*-
+# Shortcut para resetear el ESP8266 (soft reset) y ver logs
+
+set -e
+set -u
+
+cd "$HOME/libre-gallinero"
+
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+print_banner "RESET ESP8266 (SOFT RESET)"
+
+# Ejecutar script de reset
+# El script hace: reset → espera reinicio → muestra logs
+if python3 tools/reset_esp8266.py heladera; then
+    pause
+else
+    pause_error "Reset falló"
+fi
+
