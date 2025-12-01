@@ -440,6 +440,7 @@ class WebREPLClient:
         Args:
             interrupt_program: Si True, envía CTRL-C para interrumpir programa corriendo.
                              Si False, conecta sin interrumpir (útil para leer logs).
+                             Si falla en modo pasivo, intenta un retry con CTRL-C suave.
         
         Returns:
             bool: True si la conexión fue exitosa, False en caso contrario
@@ -457,32 +458,71 @@ class WebREPLClient:
         if self.verbose:
             print(f"{BLUE}🔌 Conectando a {url}...{NC}")
         
-        try:
-            self.ws = websocket.create_connection(url, timeout=10)
-            
-            time.sleep(0.5)
+        # Intentar conexión (con retry si es modo pasivo)
+        # Si falla en modo pasivo, intentar con CTRL-C para "despertar" el WebREPL
+        use_interrupt = interrupt_program
+        max_attempts = 2 if not interrupt_program else 1
+        
+        for attempt in range(max_attempts):
             try:
-                data = self.ws.recv(timeout=1)
-            except:
-                data = ""
-            
-            self.ws.send(self.password + '\r\n')
-            time.sleep(0.5)
-            
-            try:
-                response = self.ws.recv(timeout=1)
-                if isinstance(response, bytes):
-                    response = response.decode('utf-8', errors='ignore')
-                if "WebREPL connected" in response or ">>>" in response:
+                self.ws = websocket.create_connection(url, timeout=10)
+                
+                time.sleep(0.5)
+                try:
+                    data = self.ws.recv(timeout=1)
+                except:
+                    data = ""
+                
+                self.ws.send(self.password + '\r\n')
+                time.sleep(0.5)
+                
+                try:
+                    response = self.ws.recv(timeout=1)
+                    if isinstance(response, bytes):
+                        response = response.decode('utf-8', errors='ignore')
+                    if "WebREPL connected" in response or ">>>" in response:
+                        if self.verbose:
+                            print(f"{GREEN}✅ Conectado a WebREPL{NC}")
+
+                        # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
+                        # Esto es necesario antes de usar el protocolo binario de file transfer
+                        # PERO: No interrumpir si solo queremos leer logs (modo pasivo original)
+                        # Si usamos retry con CTRL-C, lo enviamos para "despertar" el WebREPL
+                        if use_interrupt:
+                            if self.verbose:
+                                if not interrupt_program and attempt > 0:
+                                    print(f"{BLUE}⏸️  Despertando WebREPL con CTRL-C...{NC}")
+                                    print(f"{BLUE}   (El programa puede continuar si está en un loop){NC}")
+                                else:
+                                    print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
+                            self.ws.send('\x03')  # CTRL-C
+                            time.sleep(0.3)
+                            # Limpiar buffer de respuesta
+                            try:
+                                self.ws.recv(timeout=0.5)
+                            except:
+                                pass
+
+                        return True
+                    else:
+                        if self.verbose:
+                            print(f"{RED}❌ Error de autenticación{NC}")
+                            print(f"   Verifica el password en WEBREPL_PASSWORD")
+                        self.close()
+                        return False
+                except:
                     if self.verbose:
                         print(f"{GREEN}✅ Conectado a WebREPL{NC}")
 
                     # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
-                    # Esto es necesario antes de usar el protocolo binario de file transfer
-                    # PERO: No interrumpir si solo queremos leer logs
-                    if interrupt_program:
+                    # PERO: No interrumpir si solo queremos leer logs (modo pasivo original)
+                    if use_interrupt:
                         if self.verbose:
-                            print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
+                            if not interrupt_program and attempt > 0:
+                                print(f"{BLUE}⏸️  Despertando WebREPL con CTRL-C...{NC}")
+                                print(f"{BLUE}   (El programa puede continuar si está en un loop){NC}")
+                            else:
+                                print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
                         self.ws.send('\x03')  # CTRL-C
                         time.sleep(0.3)
                         # Limpiar buffer de respuesta
@@ -492,45 +532,62 @@ class WebREPLClient:
                             pass
 
                     return True
+            
+            except (ConnectionRefusedError, websocket.WebSocketException, OSError) as e:
+                # Si es modo pasivo y falla, intentar con CTRL-C suave
+                if not interrupt_program and attempt == 0:
+                    if self.verbose:
+                        print(f"{YELLOW}⚠️  Conexión falló en modo pasivo{NC}")
+                        print(f"{YELLOW}   Intentando con CTRL-C suave para despertar WebREPL...{NC}")
+                    # Cerrar conexión fallida si existe
+                    if self.ws:
+                        try:
+                            self.ws.close()
+                        except:
+                            pass
+                        self.ws = None
+                    # Esperar un poco antes de reintentar
+                    time.sleep(0.5)
+                    # Usar CTRL-C en el retry
+                    use_interrupt = True
+                    continue
                 else:
                     if self.verbose:
-                        print(f"{RED}❌ Error de autenticación{NC}")
-                        print(f"   Verifica el password en WEBREPL_PASSWORD")
-                    self.close()
+                        print(f"{RED}❌ No se pudo conectar a {url}{NC}")
+                        print("   Verifica:")
+                        print("   1. ESP8266 está encendido")
+                        print("   2. ESP8266 está conectado a WiFi")
+                        print("   3. WebREPL está activo (import webrepl; webrepl.start())")
+                        if not interrupt_program:
+                            print("   4. Si el programa está bloqueado, usa 'z. Abrir REPL' primero")
+                    logger.error(f"No se pudo conectar a {url}: {e}")
                     return False
-            except:
-                if self.verbose:
-                    print(f"{GREEN}✅ Conectado a WebREPL{NC}")
-
-                # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
-                # PERO: No interrumpir si solo queremos leer logs
-                if interrupt_program:
+            except Exception as e:
+                # Si es modo pasivo y falla, intentar con CTRL-C suave
+                if not interrupt_program and attempt == 0:
                     if self.verbose:
-                        print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
-                    self.ws.send('\x03')  # CTRL-C
-                    time.sleep(0.3)
-                    # Limpiar buffer de respuesta
-                    try:
-                        self.ws.recv(timeout=0.5)
-                    except:
-                        pass
-
-                return True
+                        print(f"{YELLOW}⚠️  Error de conexión en modo pasivo: {e}{NC}")
+                        print(f"{YELLOW}   Intentando con CTRL-C suave para despertar WebREPL...{NC}")
+                    # Cerrar conexión fallida si existe
+                    if self.ws:
+                        try:
+                            self.ws.close()
+                        except:
+                            pass
+                        self.ws = None
+                    # Esperar un poco antes de reintentar
+                    time.sleep(0.5)
+                    # Usar CTRL-C en el retry
+                    use_interrupt = True
+                    continue
+                else:
+                    if self.verbose:
+                        print(f"{RED}❌ Error de conexión: {e}{NC}")
+                    logger.error(f"Error de conexión a {url}: {e}", exc_info=True)
+                    return False
         
-        except ConnectionRefusedError:
-            if self.verbose:
-                print(f"{RED}❌ No se pudo conectar a {url}{NC}")
-                print("   Verifica:")
-                print("   1. ESP8266 está encendido")
-                print("   2. ESP8266 está conectado a WiFi")
-                print("   3. WebREPL está activo (import webrepl; webrepl.start())")
-            logger.error(f"No se pudo conectar a {url}: ConnectionRefusedError")
-            return False
-        except Exception as e:
-            if self.verbose:
-                print(f"{RED}❌ Error de conexión: {e}{NC}")
-            logger.error(f"Error de conexión a {url}: {e}", exc_info=True)
-            return False
+        # Si llegamos aquí, todos los intentos fallaron
+        return False
     
     def _read_webrepl_resp(self):
         """
