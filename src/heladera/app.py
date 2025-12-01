@@ -1,4 +1,10 @@
 # Heladera App - Modo Debug Simple
+#
+# IMPORTANTE: Hardware "Active Low"
+# - LED pin 2 (NodeMCU built-in): Se enciende con LOW (0), se apaga con HIGH (1)
+# - Relé módulo común: Se activa con LOW (0), se desactiva con HIGH (1)
+# Esto es NORMAL en hardware embebido. El código invierte la lógica para que
+# los logs representen el estado lógico (ON/OFF) en lugar del estado físico (HIGH/LOW).
 import sys
 try:
     import machine
@@ -24,8 +30,9 @@ def run(cfg):
         logger.log('heladera', f'Hardware OK - RELE pin {RELAY_PIN}, LED pin {LED_PIN}')
         
         # Estado inicial: RELE ON, LED OFF
-        relay.on()
-        led.off()
+        # Hardware "active low": LOW (off()) activa relé, HIGH (on()) apaga LED
+        relay.off()  # LOW = relé activado (ON)
+        led.on()     # HIGH = LED apagado (OFF)
         state_relay_on = True
         logger.log('heladera', 'Estado inicial: RELE ON, LED OFF')
         
@@ -44,13 +51,15 @@ def run(cfg):
                 
                 if state_relay_on:
                     # RELE ON, LED OFF
-                    relay.on()
-                    led.off()
+                    # Hardware "active low": LOW activa relé, HIGH apaga LED
+                    relay.off()  # LOW = relé activado (ON)
+                    led.on()     # HIGH = LED apagado (OFF)
                     logger.log('heladera', 'CAMBIO: RELE ON, LED OFF')
                 else:
                     # RELE OFF, LED ON
-                    relay.off()
-                    led.on()
+                    # Hardware "active low": HIGH desactiva relé, LOW enciende LED
+                    relay.on()   # HIGH = relé desactivado (OFF)
+                    led.off()    # LOW = LED encendido (ON)
                     logger.log('heladera', 'CAMBIO: RELE OFF, LED ON')
                 
                 cycle_start = current_time
@@ -67,8 +76,9 @@ def run(cfg):
     except KeyboardInterrupt:
         logger.log('heladera', 'Interrumpido por usuario')
         try:
-            relay.off()
-            led.off()
+            # Hardware "active low": HIGH desactiva todo
+            relay.on()   # HIGH = relé desactivado
+            led.off()    # LOW = LED encendido (mantener visible durante shutdown)
             logger.log('heladera', 'Hardware apagado')
         except:
             pass
