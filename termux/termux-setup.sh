@@ -44,6 +44,7 @@ pkg upgrade -y
 pkg install -y \
   git \
   python \
+  nmap \
   termux-api termux-tools
 
 # 5. Verificar que Python3 esté disponible
@@ -61,6 +62,7 @@ pip install websocket-client
 printf "\n\n✅ ¡Setup completo!\n\n"
 printf "📋 Shortcuts instalados en Termux Widget:\n"
 printf "  • Update Setup       - Actualiza el repositorio y dependencias\n"
+printf "  • 🔍 Buscar ESP8266  - Escanea red y detecta ESP8266 (nmap)\n"
 printf "  • Abrir REPL         - Abre REPL interactivo del ESP8266\n"
 printf "  • Ver Logs           - Lee logs en tiempo real (NUEVO)\n"
 printf "  • Limpiar ESP8266    - Limpia archivos del ESP8266\n"

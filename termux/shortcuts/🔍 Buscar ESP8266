@@ -1,0 +1,44 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# -*- coding: utf-8 -*-
+# Shortcut para buscar ESP8266 en la red local usando nmap
+# Optimizado para Termux/Android
+
+set -e
+
+# Banner bonito
+printf "
+╔════════════════════════════════════════╗
+║    🔍 BUSCAR ESP8266 EN LA RED 🔍     ║
+╚════════════════════════════════════════╝
+\n"
+
+# Cambiar al directorio del proyecto
+cd "$HOME/libre-gallinero" || {
+    printf "❌ Error: No se encontró el directorio libre-gallinero\n"
+    printf "   Ejecuta primero: bash termux/termux-setup.sh\n\n"
+    read -p "Presiona Enter para cerrar..."
+    exit 1
+}
+
+# Verificar que exista .env
+if [ ! -f .env ]; then
+    printf "📄 No existe .env, creando desde .env.example...\n\n"
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        printf "✅ .env creado\n"
+        printf "⚠️  Recuerda configurar WEBREPL_PASSWORD si es diferente\n\n"
+    else
+        printf "❌ Error: No existe .env.example\n\n"
+        read -p "Presiona Enter para cerrar..."
+        exit 1
+    fi
+fi
+
+# Ejecutar scanner de ESP8266
+printf "🔍 Escaneando red local...\n\n"
+
+python3 tools/find_esp8266.py
+
+# Pausa para leer resultados
+printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+read -p "Presiona Enter para cerrar..."

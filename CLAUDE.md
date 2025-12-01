@@ -275,7 +275,7 @@ Ejecutar: `pytest`, `pytest tests/test_main.py -v`
 
 **Setup:**
 ```bash
-pkg install python git
+pkg install python git nmap
 git clone <repo>
 python -m venv env && source env/bin/activate
 pip install -r requirements.txt
@@ -284,6 +284,30 @@ pip install -r requirements.txt
 **Widgets:** Scripts en `~/.shortcuts/` → Termux:Widget app
 
 **Ventajas:** Deploy desde móvil, debugging in-situ, menor latencia WiFi
+
+**IMPORTANTE - Network Discovery en Termux:**
+
+El scanner Python tiene **limitaciones críticas en Android**:
+- Timeout de 0.5s muy corto (WiFi móvil más lento)
+- Threading limitado (max 20 threads vs 100 en PC)
+- Permisos de red restringidos (Android 10+)
+
+**Solución: usar nmap**
+```bash
+# Instalar nmap (incluido en termux-setup.sh)
+pkg install nmap
+
+# Buscar ESP8266 (mucho más rápido y confiable)
+python3 tools/find_esp8266.py  # Usa nmap si está disponible
+# O directamente:
+bash termux/find_esp.sh
+```
+
+**Ventajas de nmap:**
+- ⚡ 10x más rápido (30-60s vs 2-5 min)
+- ✅ Detecta vendor Espressif por MAC (con root)
+- 🎯 Mayor precisión en WiFi móvil
+- 📦 Sin restricciones de permisos Android
 
 ### PC Development
 
@@ -369,6 +393,11 @@ pytest
 # Setup inicial (USB, 1 vez)
 python tools/setup_initial.py
 
+# Buscar ESP8266 en red (nmap)
+python tools/find_esp8266.py              # Escaneo automático
+python tools/find_esp8266.py 192.168.1.0/24  # Rango específico
+python tools/find_esp8266.py --test-only 192.168.1.123  # Solo test
+
 # Deploy apps (WiFi)
 python tools/deploy_wifi.py gallinero [ip]
 python tools/deploy_app.py heladera      # Con cache
@@ -379,6 +408,15 @@ python tools/deploy_usb.py gallinero
 # Utils
 python tools/clean_esp8266.py
 python tools/open_repl.py
+```
+
+**Termux (Android):**
+```bash
+# Buscar ESP8266 (shortcut en Termux:Widget)
+bash termux/find_esp.sh
+
+# O usar el shortcut bonito:
+# "🔍 Buscar ESP8266" en Termux:Widget
 ```
 
 ---
