@@ -8,14 +8,16 @@ set -u
 
 cd "$HOME/libre-gallinero"
 
-printf "\n"
-printf "╔════════════════════════════════════════╗\n"
-printf "║       🐔  LIBRE GALLINERO  🐔          ║\n"
-printf "║      LIMPIEZA DE ESP8266               ║\n"
-printf "╚════════════════════════════════════════╝\n"
-printf "\n"
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+print_banner "LIMPIEZA DE ESP8266"
 
 # Ejecutar script de limpieza interactivo
-exec python3 tools/clean_esp8266.py
+if python3 tools/clean_esp8266.py; then
+    pause_success
+else
+    pause_error "Limpieza falló"
+fi
 
 

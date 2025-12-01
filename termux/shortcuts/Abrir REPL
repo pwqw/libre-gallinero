@@ -8,12 +8,13 @@ set -u
 
 cd "$HOME/libre-gallinero"
 
-printf "\n"
-printf "╔════════════════════════════════════════╗\n"
-printf "║       🐔  LIBRE GALLINERO  🐔          ║\n"
-printf "║         ABRIR WEBREPL REPL             ║\n"
-printf "╚════════════════════════════════════════╝\n"
-printf "\n"
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
 
-# Ejecutar script interactivo
-exec python3 tools/open_repl.py
+print_banner "ABRIR WEBREPL REPL"
+
+# Ejecutar REPL (es interactivo, no necesita manejo de errores especial)
+python3 tools/open_repl.py
+
+# Pausa al terminar
+pause "Presiona Enter para cerrar..."

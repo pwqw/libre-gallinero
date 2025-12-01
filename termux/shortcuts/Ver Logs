@@ -7,14 +7,16 @@ set -u
 
 cd "$HOME/libre-gallinero"
 
-printf "\n"
-printf "╔════════════════════════════════════════╗\n"
-printf "║       🐔  LIBRE GALLINERO  🐔          ║\n"
-printf "║      LEER LOGS ESP8266 (PASIVO)        ║\n"
-printf "╚════════════════════════════════════════╝\n"
-printf "\n"
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+print_banner "LEER LOGS ESP8266 (PASIVO)"
 
 # Ejecutar script de logs en modo no invasivo (por defecto)
 # Para modo invasivo usar: python3 tools/read_logs.py heladera --restart
 # Para ver historial usar: python3 tools/read_logs.py heladera --history
-exec python3 tools/read_logs.py heladera
+if python3 tools/read_logs.py heladera; then
+    pause
+else
+    pause_error "Lectura de logs falló"
+fi

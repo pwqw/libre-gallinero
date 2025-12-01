@@ -78,3 +78,7 @@ printf "  2. En PC/Mac: Configurar WebREPL y conectar ESP8266 a WiFi\n"
 printf "  3. Configurar .env con WEBREPL_IP y WEBREPL_PASSWORD\n"
 printf "  4. Usar shortcuts de Termux Widget para deployar apps\n\n"
 printf "📖 Ver guía completa: docs/INSTALLATION.md\n\n"
+
+# Pausa para leer resultados
+printf "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+read -p "Presiona Enter para continuar..."

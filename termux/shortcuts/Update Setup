@@ -6,5 +6,14 @@ set -e
 set -u
 
 cd "$HOME/libre-gallinero"
-exec ./termux/termux-setup.sh
+
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+# Ejecutar setup
+if ./termux/termux-setup.sh; then
+    pause_success
+else
+    pause_error "Setup falló"
+fi
 

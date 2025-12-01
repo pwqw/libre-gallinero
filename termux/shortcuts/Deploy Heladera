@@ -8,12 +8,14 @@ set -u
 
 cd "$HOME/libre-gallinero"
 
-printf "\n"
-printf "╔════════════════════════════════════════╗\n"
-printf "║       🐔  LIBRE GALLINERO  🐔          ║\n"
-printf "║      DEPLOY: HELADERA APP              ║\n"
-printf "╚════════════════════════════════════════╝\n"
-printf "\n"
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
 
-# Actualizar repo y ejecutar deploy
-exec python3 tools/deploy_app.py heladera
+print_banner "DEPLOY: HELADERA APP"
+
+# Ejecutar deploy y capturar resultado
+if python3 tools/deploy_app.py heladera; then
+    pause_success
+else
+    pause_error "Deploy falló"
+fi

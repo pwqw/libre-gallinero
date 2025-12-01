@@ -4,13 +4,7 @@
 # Optimizado para Termux/Android
 
 set -e
-
-# Banner bonito
-printf "
-╔════════════════════════════════════════╗
-║    🔍 BUSCAR ESP8266 EN LA RED 🔍     ║
-╚════════════════════════════════════════╝
-\n"
+set -u
 
 # Cambiar al directorio del proyecto
 cd "$HOME/libre-gallinero" || {
@@ -20,6 +14,11 @@ cd "$HOME/libre-gallinero" || {
     exit 1
 }
 
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+print_banner "🔍 BUSCAR ESP8266 EN LA RED 🔍"
+
 # Verificar que exista .env
 if [ ! -f .env ]; then
     printf "📄 No existe .env, creando desde .env.example...\n\n"
@@ -28,8 +27,7 @@ if [ ! -f .env ]; then
         printf "✅ .env creado\n"
         printf "⚠️  Recuerda configurar WEBREPL_PASSWORD si es diferente\n\n"
     else
-        printf "❌ Error: No existe .env.example\n\n"
-        read -p "Presiona Enter para cerrar..."
+        pause_error "No existe .env.example"
         exit 1
     fi
 fi
@@ -37,8 +35,8 @@ fi
 # Ejecutar scanner de ESP8266
 printf "🔍 Escaneando red local...\n\n"
 
-python3 tools/find_esp8266.py
-
-# Pausa para leer resultados
-printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-read -p "Presiona Enter para cerrar..."
+if python3 tools/find_esp8266.py; then
+    pause
+else
+    pause_error "Escaneo falló"
+fi
