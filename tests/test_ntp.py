@@ -13,29 +13,30 @@ sys.modules['logger'] = MagicMock()
 class TestNtpSync:
     """Tests minimalistas para sync_ntp()"""
 
+    @patch('utime.localtime')
     @patch('utime.time')
     @patch('time.sleep')
     @patch('src.ntp.logger')
-    def test_sync_ntp_success_without_timezone(self, mock_logger, mock_sleep, mock_time):
+    def test_sync_ntp_success_without_timezone(self, mock_logger, mock_sleep, mock_time, mock_localtime):
         """Test NTP sync exitoso sin timezone"""
         from src.ntp import sync_ntp
         import ntptime
 
         ntptime.settime = Mock()
         mock_time.return_value = 1234567890
+        mock_localtime.return_value = (2024, 12, 1, 12, 0, 0, 6, 336)
 
-        result = sync_ntp(longitude=None)
+        result = sync_ntp(tz_offset=0)
 
         assert result == (True, 1234567890)  # Returns (True, timestamp)
         assert isinstance(result[1], int)
         ntptime.settime.assert_called_once()
 
-    @patch('timezone.get_timezone_offset')
     @patch('time.sleep')
     @patch('src.ntp.logger')
     @patch('utime.localtime')
     @patch('utime.time')
-    def test_sync_ntp_success_with_timezone(self, mock_time, mock_localtime, mock_logger, mock_sleep, mock_tz_offset):
+    def test_sync_ntp_success_with_timezone(self, mock_time, mock_localtime, mock_logger, mock_sleep):
         """Test NTP sync exitoso con timezone"""
         from src.ntp import sync_ntp
         import ntptime
@@ -48,18 +49,16 @@ class TestNtpSync:
         mock_rtc = MagicMock()
         machine.RTC = Mock(return_value=mock_rtc)
 
-        mock_tz_offset.return_value = -3
-
-        result = sync_ntp(longitude=-45.0)
+        result = sync_ntp(tz_offset=-3)
 
         assert result == (True, 1234567890)  # Returns (True, timestamp)
         ntptime.settime.assert_called_once()
-        mock_tz_offset.assert_called_once_with(-45.0)
 
+    @patch('utime.localtime')
     @patch('utime.time')
     @patch('time.sleep')
     @patch('src.ntp.logger')
-    def test_sync_ntp_retries_on_failure(self, mock_logger, mock_sleep, mock_time):
+    def test_sync_ntp_retries_on_failure(self, mock_logger, mock_sleep, mock_time, mock_localtime):
         """Test que NTP reintenta en caso de falla"""
         from src.ntp import sync_ntp
         import ntptime
@@ -73,8 +72,9 @@ class TestNtpSync:
 
         ntptime.settime = Mock(side_effect=settime_side_effect)
         mock_time.return_value = 1234567890
+        mock_localtime.return_value = (2024, 12, 1, 12, 0, 0, 6, 336)
 
-        result = sync_ntp(longitude=None)
+        result = sync_ntp(tz_offset=0)
 
         assert result[0] is True  # Returns (True, timestamp)
         assert isinstance(result[1], int)
@@ -90,29 +90,31 @@ class TestNtpSync:
 
         ntptime.settime = Mock(side_effect=Exception("NTP error"))
 
-        result = sync_ntp(longitude=None)
+        result = sync_ntp(tz_offset=0)
 
         assert result == (False, 0)  # Returns (False, 0) on failure
         assert ntptime.settime.call_count == 5
 
     @patch('utime.time')
-    @patch('timezone.get_timezone_offset')
     @patch('time.sleep')
     @patch('src.ntp.logger')
-    def test_sync_ntp_handles_timezone_int_conversion(self, mock_logger, mock_sleep, mock_tz_offset, mock_time):
-        """Test que timezone offset se convierte a int correctamente"""
+    @patch('utime.localtime')
+    def test_sync_ntp_handles_negative_timezone(self, mock_localtime, mock_logger, mock_sleep, mock_time):
+        """Test que timezone negativo funciona correctamente (Argentina UTC-3)"""
         from src.ntp import sync_ntp
         import ntptime
+        import machine
 
         ntptime.settime = Mock()
-        mock_time.return_value = 1234567890
+        mock_time.return_value = 1733068800  # 2024-12-01 12:00:00 UTC
+        # Argentina UTC-3: 2024-12-01 09:00:00
+        mock_localtime.return_value = (2024, 12, 1, 9, 0, 0, 6, 336)
 
-        # Simular que get_timezone_offset retorna float
-        mock_tz_offset.return_value = -3.5
+        mock_rtc = MagicMock()
+        machine.RTC = Mock(return_value=mock_rtc)
 
-        # No debería lanzar excepción por formato :+d
-        result = sync_ntp(longitude=-52.5)
+        result = sync_ntp(tz_offset=-3)
 
-        assert result[0] is True  # Returns (True, timestamp)
+        assert result[0] is True
         assert isinstance(result[1], int)
-        assert result[1] == 1234567890
+        assert result[1] == 1733068800

@@ -44,11 +44,10 @@ def main():
 
     feed_wdt()
     import ntp
-    longitude=cfg.get('LONGITUDE',-64.1833)
-    # Convert to float if string (from .env config)
-    if isinstance(longitude, str):
-        longitude=float(longitude)
-    ntp_ok,ntp_timestamp=ntp.sync_ntp(longitude=longitude)
+    tz_offset=cfg.get('TIMEZONE','-3')
+    if isinstance(tz_offset,str):
+        tz_offset=int(tz_offset)
+    ntp_ok,ntp_timestamp=ntp.sync_ntp(tz_offset=tz_offset)
     if not ntp_ok:log("⚠ NTP falló")
     else:log(f"NTP sync OK")
     
@@ -135,7 +134,7 @@ def main():
                     import network
                     wlan=network.WLAN(network.STA_IF)
                     if wlan.isconnected():
-                        ntp_ok,ntp_timestamp=ntp.sync_ntp(longitude=longitude)
+                        ntp_ok,ntp_timestamp=ntp.sync_ntp(tz_offset=tz_offset)
                         if ntp_ok:
                             last_ntp_sync_time=ntp_timestamp
                             log(f"✓ NTP resync OK: {ntp_timestamp}")
