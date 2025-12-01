@@ -8,7 +8,7 @@ try:
     import time
     import gc
     import logger
-    import state
+    from heladera import state
 except ImportError:
     print("[heladera/app] ERROR: Módulos MicroPython no encontrados")
 
