@@ -21,7 +21,7 @@ Herramientas Python 3.9 (PC/Mac/Linux/Termux) para:
 tools/                      # Deployment tools (Python 3.9)
 ├── setup_initial.py       # Setup USB (1 vez)
 ├── deploy_wifi.py         # Deploy WebREPL
-├── deploy_app.py          # Deploy con IP cache (Termux)
+├── deploy_app.py          # Deploy con git pull (Termux)
 ├── deploy_usb.py          # Deploy USB
 └── common/
     ├── webrepl_client.py  # WebREPL protocol (CRÍTICO)
@@ -53,7 +53,7 @@ python3 tools/deploy_wifi.py heladera
 
 ### Features
 - Zero-config discovery (escaneo automático)
-- IP caching (deploy ultra-rápido)
+- IP desde .env (deploy simple)
 - WebREPL protocol binario oficial
 - Multi-plataforma + optimizado Termux
 
@@ -299,6 +299,8 @@ pkg install nmap
 
 # Buscar ESP8266 (mucho más rápido y confiable)
 python3 tools/find_esp8266.py  # Usa nmap si está disponible
+# O directamente:
+bash termux/find_esp.sh
 ```
 
 **Ventajas de nmap:**
@@ -342,7 +344,7 @@ APP=blink  # gallinero, heladera
 
 **Fase 1:** Port scan toda la red /24 (puerto 8266, max 100 threads)
 **Fase 2:** Test WebREPL secuencial
-**Smart:** IP cache → .env → scan → 192.168.4.1 fallback
+**Smart:** .env → scan → 192.168.4.1 fallback
 
 ### App Structure
 
@@ -398,7 +400,7 @@ python tools/find_esp8266.py --test-only 192.168.1.123  # Solo test
 
 # Deploy apps (WiFi)
 python tools/deploy_wifi.py gallinero [ip]
-python tools/deploy_app.py heladera      # Con cache
+python tools/deploy_app.py heladera
 
 # Deploy USB
 python tools/deploy_usb.py gallinero
@@ -410,10 +412,8 @@ python tools/open_repl.py
 
 **Termux (Android):**
 ```bash
-# Buscar ESP8266 (shortcut en Termux:Widget)
-# "🔍 Buscar ESP8266" en Termux:Widget
-# O directamente:
-python3 tools/find_esp8266.py
+# Buscar ESP8266 (actualiza .env automáticamente)
+bash termux/find_esp.sh
 ```
 
 ---
@@ -433,7 +433,7 @@ python3 tools/find_esp8266.py
 3. **MEDIA**: Deployment
    - Tools rápidos/confiables
    - Network discovery robusto
-   - IP caching mobile
+   - IP desde .env
 
 4. **Testing**: Mock MicroPython (machine, _thread, network, gc)
 
