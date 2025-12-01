@@ -431,9 +431,13 @@ class WebREPLClient:
                 return path
         return current
     
-    def connect(self):
+    def connect(self, interrupt_program=True):
         """
         Conecta al WebREPL del ESP8266.
+        
+        Args:
+            interrupt_program: Si True, envía CTRL-C para interrumpir programa corriendo.
+                             Si False, conecta sin interrumpir (útil para leer logs).
         
         Returns:
             bool: True si la conexión fue exitosa, False en caso contrario
@@ -473,15 +477,17 @@ class WebREPLClient:
 
                     # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
                     # Esto es necesario antes de usar el protocolo binario de file transfer
-                    if self.verbose:
-                        print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
-                    self.ws.send('\x03')  # CTRL-C
-                    time.sleep(0.3)
-                    # Limpiar buffer de respuesta
-                    try:
-                        self.ws.recv(timeout=0.5)
-                    except:
-                        pass
+                    # PERO: No interrumpir si solo queremos leer logs
+                    if interrupt_program:
+                        if self.verbose:
+                            print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
+                        self.ws.send('\x03')  # CTRL-C
+                        time.sleep(0.3)
+                        # Limpiar buffer de respuesta
+                        try:
+                            self.ws.recv(timeout=0.5)
+                        except:
+                            pass
 
                     return True
                 else:
@@ -495,15 +501,17 @@ class WebREPLClient:
                     print(f"{GREEN}✅ Conectado a WebREPL{NC}")
 
                 # IMPORTANTE: Enviar CTRL-C para interrumpir cualquier programa corriendo
-                if self.verbose:
-                    print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
-                self.ws.send('\x03')  # CTRL-C
-                time.sleep(0.3)
-                # Limpiar buffer de respuesta
-                try:
-                    self.ws.recv(timeout=0.5)
-                except:
-                    pass
+                # PERO: No interrumpir si solo queremos leer logs
+                if interrupt_program:
+                    if self.verbose:
+                        print(f"{BLUE}⏸️  Interrumpiendo programa...{NC}")
+                    self.ws.send('\x03')  # CTRL-C
+                    time.sleep(0.3)
+                    # Limpiar buffer de respuesta
+                    try:
+                        self.ws.recv(timeout=0.5)
+                    except:
+                        pass
 
                 return True
         

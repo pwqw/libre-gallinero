@@ -161,7 +161,8 @@ def wait_for_reboot(ip, password, project_dir, max_attempts=3, initial_wait=5):
         
         try:
             client = WebREPLClient(ip=ip, password=password, project_dir=project_dir, verbose=False, auto_discover=False)
-            if client.connect():
+            # Conectar SIN interrumpir el programa (queremos leer logs, no hacer deploy)
+            if client.connect(interrupt_program=False):
                 print(f"{GREEN}✅ Conectado{NC}")
                 return client
             else:
