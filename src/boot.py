@@ -54,11 +54,14 @@ wifi_ok = do_connect()
 # WebREPL: DESPUÉS de WiFi (según docs oficiales)
 if wifi_ok:
     try:
-        import webrepl
+        import webrepl, time
         webrepl.start()
+        # Pequeño delay para asegurar que WebREPL se inicialice correctamente
+        time.sleep(0.1)
         print('[boot] WebREPL OK')
-    except:
-        print('[boot] WebREPL error (run webrepl_setup)')
+    except Exception as e:
+        print(f'[boot] WebREPL error: {e}')
+        print('[boot] Verifica: webrepl_setup configurado')
 
 gc.collect()
 # Listo. MicroPython ejecutará main.py ahora.

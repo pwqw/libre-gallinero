@@ -2,6 +2,10 @@
 # Hardware "Active Low": LED pin 2, RELE pin 5
 # Con NTP: 0-29min OFF, 30-59min ON. 00:00-07:00 siempre OFF
 # Sin NTP: ciclos ~30min con drift
+#
+# CRÍTICO para WebREPL: El loop debe ceder control frecuentemente.
+# time.sleep(0) después de operaciones pesadas (save_state, cambios de estado)
+# permite que WebREPL procese conexiones entrantes.
 import sys
 try:
     import machine
@@ -81,6 +85,8 @@ def run(cfg):
                             s['cycle_elapsed_seconds'] = 0
                             s['last_save_timestamp'] = t
                             state.update_ntp_timestamp(s, t)
+                            # Ceder control después de cambio de estado (operación pesada)
+                            time.sleep(0)
                     elif not has_ntp:
                         if cycle_start is None:
                             cycle_start = t
@@ -99,14 +105,19 @@ def run(cfg):
                             s['fridge_on'] = fridge_on
                             s['cycle_elapsed_seconds'] = 0
                             s['last_save_timestamp'] = t
+                            # Ceder control después de cambio de estado (operación pesada)
+                            time.sleep(0)
                         else:
                             s['cycle_elapsed_seconds'] = elapsed
                 except Exception as e:
                     logger.log('heladera', f'ERROR: {e}')
             if t - last_save >= 60.0:
                 try:
-                    state.save_state(s)
+                    state.save_state(s)  # Operación bloqueante (escribe a flash)
                     last_save = t
+                    # CRÍTICO: Ceder control después de escribir a flash para que WebREPL funcione
+                    time.sleep(0)
+                    gc.collect()  # Liberar memoria después de save
                 except:
                     pass
             if tick % 1000 == 0:
@@ -120,6 +131,7 @@ def run(cfg):
                         logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {r:.0f}s (sin NTP)')
                 except:
                     pass
+            # Ceder control en cada iteración para que WebREPL pueda procesar conexiones
             yield
             
     except KeyboardInterrupt:

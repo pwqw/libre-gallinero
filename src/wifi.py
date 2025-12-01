@@ -3,6 +3,8 @@ import logger
 _wlan=None
 _cfg=None
 _wdt_callback=None
+_webrepl_active=False
+_webrepl_ip=None
 def log(msg):
  logger.log('wifi',msg)
 
@@ -44,16 +46,26 @@ def _start_ap_fallback(cfg):
     except Exception as e:
         log(f"✗ AP: {e}")
         return False
-def _start_webrepl(ip):
-    """Inicia WebREPL CRÍTICO: WiFi primero"""
+def _start_webrepl(ip, force_restart=False):
+    """Inicia/reinicia WebREPL solo si es necesario"""
+    global _webrepl_active, _webrepl_ip
+    if _webrepl_active and _webrepl_ip == ip and not force_restart:
+        log(f"WebREPL ya activo en {ip}")
+        return True
     try:
-        import webrepl,gc
+        import webrepl, gc
         webrepl.start()
+        _webrepl_active = True
+        _webrepl_ip = ip
         log(f"✅ WebREPL: ws://{ip}:8266")
         gc.collect()
         log(f"Mem: {gc.mem_free()} bytes")
+        return True
     except Exception as e:
         log(f"⚠ WebREPL error: {e}")
+        _webrepl_active = False
+        _webrepl_ip = None
+        return False
 def _check_ip_range(ip):
     if not ip.startswith('192.168.0.'):log("⚠ IP fuera rango")
 def _wdt_feed():
@@ -174,11 +186,14 @@ def connect_wifi(cfg,wdt_callback=None):
     return False
 
 def monitor_wifi(check_interval=30):
+    """Monitor WiFi con reinicio inteligente de WebREPL"""
     import time,network
+    global _webrepl_active, _webrepl_ip
     log(f"Monitor WiFi ({check_interval}s)")
     wlan=_get_wlan()
     last_ip=None
     dc=0
+    was_connected=False
     while True:
         try:
             _wdt_feed()
@@ -188,16 +203,26 @@ def monitor_wifi(check_interval=30):
                 if ip and ip!='0.0.0.0':
                     if last_ip!=ip:
                         log(f"✓ WiFi:{ip} GW:{ifconfig[2]}")
+                        force_restart = not was_connected or (last_ip is not None and last_ip != ip)
+                        _start_webrepl(ip, force_restart=force_restart)
                         last_ip=ip
+                        was_connected=True
                     dc=0
                 else:
                     dc+=1
                     if dc>=3:
                         log("⚠ IP inválida, reset")
+                        _webrepl_active=False
+                        _webrepl_ip=None
                         wlan=_reset_wlan()
                         time.sleep(2)
                         if _cfg:connect_wifi(_cfg,_wdt_callback)
             else:
+                if was_connected:
+                    log("⚠ WiFi desconectado")
+                    _webrepl_active=False
+                    _webrepl_ip=None
+                    was_connected=False
                 dc+=1
                 if dc==1:log("⚠ WiFi desconectado")
                 elif dc%5==0:log(f"⚠ WiFi desc ({dc} checks)")
