@@ -2,6 +2,27 @@
 
 Desarrollo MicroPython en ESP8266 usando WebREPL - 100% libre, sin root, sin cables.
 
+## 🔍 NUEVO: Búsqueda de ESP8266 con nmap
+
+El scanner Python **NO funciona en Termux** debido a limitaciones de Android (timeouts, threading, permisos).
+
+**Solución:** Usar **nmap** para escaneo 10x más rápido y confiable.
+
+```bash
+# Instalar nmap
+pkg install nmap
+
+# Buscar ESP8266
+python3 tools/find_esp8266.py  # Usa nmap automáticamente
+# O shortcut: "🔍 Buscar ESP8266" en Termux:Widget
+```
+
+Ver documentación completa en:
+- **NMAP_COMMANDS.md**: Comandos y troubleshooting
+- **Sección "Buscar ESP8266"** más abajo
+
+---
+
 ## Solución: WebREPL MicroPython
 
 Software 100% libre, sin root, sin USB después del setup inicial, funciona en Android/Mac.
