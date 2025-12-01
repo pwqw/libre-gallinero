@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script interactivo para abrir WebREPL del ESP8266.
-Usa IPs cacheadas por app y solicita password si falla.
+Usa IP del .env o permite ingresar una IP manual.
 """
 
 import sys
@@ -13,39 +13,27 @@ script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 
 from common.webrepl_client import WebREPLClient, GREEN, YELLOW, BLUE, RED, NC, load_config
-from common.ip_cache import get_cached_ip
 
 
-def select_app():
-    """Permite al usuario seleccionar qué app usar (para obtener IP cacheada)"""
-    print(f"{BLUE}📱 Selecciona la app para obtener IP cacheada:{NC}")
-    print(f"  1. Blink")
-    print(f"  2. Gallinero")
-    print(f"  3. Heladera")
-    print(f"  4. Usar IP del .env")
-    print(f"  5. Ingresar IP manualmente")
+def select_ip_mode():
+    """Permite al usuario seleccionar el modo de IP"""
+    print(f"{BLUE}🌐 Selecciona el origen de la IP:{NC}")
+    print(f"  1. Usar IP del .env")
+    print(f"  2. Ingresar IP manualmente")
     print()
 
     try:
-        choice = input(f"{YELLOW}Selección (1-5): {NC}").strip()
+        choice = input(f"{YELLOW}Selección (1-2): {NC}").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         sys.exit(0)
 
-    app_map = {
-        '1': 'blink',
-        '2': 'gallinero',
-        '3': 'heladera',
-    }
-
-    if choice in app_map:
-        return app_map[choice], None
-    elif choice == '4':
-        return None, None  # Usar .env
-    elif choice == '5':
+    if choice == '1':
+        return None  # Usar .env
+    elif choice == '2':
         try:
             ip = input(f"{YELLOW}Ingresa IP: {NC}").strip()
-            return None, ip
+            return ip
         except (EOFError, KeyboardInterrupt):
             print()
             sys.exit(0)
@@ -277,29 +265,22 @@ def main():
         project_dir = script_dir.parent
         config = load_config(project_dir)
 
-        # Seleccionar app / IP
+        # Seleccionar IP
         try:
-            app_name, manual_ip = select_app()
+            manual_ip = select_ip_mode()
         except Exception as e:
-            print(f"{RED}❌ Error seleccionando app: {e}{NC}")
+            print(f"{RED}❌ Error seleccionando IP: {e}{NC}")
             error_occurred = True
             wait_before_exit(error_occurred)
             sys.exit(1)
 
         print()
 
-        # Obtener IP (prioridad: manual > caché > .env)
+        # Obtener IP (prioridad: manual > .env)
         ip = None
         if manual_ip:
             ip = manual_ip
             print(f"{BLUE}🌐 Usando IP manual: {ip}{NC}")
-        elif app_name:
-            cached_ip = get_cached_ip(app_name, verbose=True)
-            if cached_ip:
-                ip = cached_ip
-            else:
-                print(f"{YELLOW}⚠️  No hay IP cacheada para '{app_name}', usando .env{NC}")
-                ip = config.get('WEBREPL_IP')
         else:
             # Usar IP del .env
             ip = config.get('WEBREPL_IP')
@@ -308,7 +289,7 @@ def main():
 
         if not ip:
             print(f"{RED}❌ No se pudo obtener IP del ESP8266{NC}")
-            print(f"   Configura WEBREPL_IP en .env o usa una IP cacheada")
+            print(f"   Configura WEBREPL_IP en .env o ingresa una IP manualmente")
             error_occurred = True
             wait_before_exit(error_occurred)
             sys.exit(1)

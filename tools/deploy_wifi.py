@@ -40,7 +40,6 @@ script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 
 from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
-from common.ip_cache import get_cached_ip, save_cached_ip
 from common.env_updater import update_env_for_app, cleanup_temp_env
 
 
@@ -200,24 +199,14 @@ def main():
         except:
             pass
     
-    # Cargar IP cacheada si existe y no se especificó IP manualmente
-    # Esto se hace ANTES de crear el cliente para poder pasarla al constructor
-    cached_ip_pre = None
-    if not ip_arg and app_name:
-        cached_ip_pre = get_cached_ip(app_name, verbose=True)
-        if cached_ip_pre:
-            print()
-
-    # Conectar a WebREPL (usar IP si se proporcionó, sino autodiscovery)
+    # Conectar a WebREPL (usar IP si se proporcionó, sino usar .env)
+    # Si no se proporciona IP, el cliente usa WEBREPL_IP del .env
     auto_discover = not bool(ip_arg)
     client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
 
-    # Si se proporcionó IP, usarla directamente (tiene prioridad sobre caché)
+    # Si se proporcionó IP manualmente, usarla
     if ip_arg:
         client.ip = ip_arg
-    elif cached_ip_pre:
-        # Intentar con la IP cacheada primero
-        client.ip = cached_ip_pre
 
     if not client.connect():
         sys.exit(1)
@@ -303,11 +292,6 @@ def main():
     # Verificación post-deploy
     verify_deploy(client)
 
-    # Guardar IP en caché si el deploy fue exitoso
-    if failed == 0 and app_name and client.ip:
-        save_cached_ip(app_name, client.ip, verbose=True)
-        print()
-
     # Cerrar conexión
     client.close()
 
@@ -346,7 +330,7 @@ def main():
 
         # Reconectar para reiniciar
         client = WebREPLClient(project_dir=project_dir, verbose=False, auto_discover=False)
-        client.ip = ip_arg or cached_ip_pre or client.config.get('WEBREPL_IP')
+        client.ip = ip_arg if ip_arg else client.config.get('WEBREPL_IP')
         if client.connect():
             try:
                 # Usar método centralizado reset() (DRY)

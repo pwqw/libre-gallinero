@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Script optimizado para Termux que usa nmap para encontrar ESP8266/ESP32
-# Busca dispositivos con puerto 8266 abierto (WebREPL)
+# Busca dispositivos con puerto 8266 abierto (WebREPL) y actualiza .env
 
 set -e
 
@@ -59,25 +59,74 @@ if [ -z "$ESP_IPS" ]; then
     exit 1
 fi
 
+# Contar dispositivos encontrados
+NUM_ESP=$(echo "$ESP_IPS" | wc -l)
+
 # Mostrar resultados
-echo -e "${GREEN}✅ Dispositivos con puerto 8266 abierto:${NC}\n"
+echo -e "${GREEN}✅ Dispositivos con puerto 8266 abierto (${NUM_ESP}):${NC}\n"
 echo "$ESP_IPS" | while read -r ip; do
     echo -e "   • ${GREEN}${ip}${NC}"
 done
-
-echo
-echo -e "${BLUE}💡 Para probar WebREPL en cada IP:${NC}"
-echo "$ESP_IPS" | while read -r ip; do
-    echo "   python3 tools/find_esp8266.py --test-only $ip"
-done
-
-echo
-echo -e "${BLUE}💡 Para deployar directamente:${NC}"
-FIRST_IP=$(echo "$ESP_IPS" | head -1)
-echo "   python3 tools/deploy_wifi.py gallinero $FIRST_IP"
 echo
 
-# Guardar IPs en archivo temporal para uso posterior
+# Guardar IPs en archivo temporal
 ESP_LIST_FILE="/tmp/esp8266_ips.txt"
 echo "$ESP_IPS" > "$ESP_LIST_FILE"
 echo -e "${BLUE}📄 IPs guardadas en: ${ESP_LIST_FILE}${NC}\n"
+
+# Actualizar .env si hay exactamente 1 dispositivo
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+ENV_FILE="$PROJECT_DIR/.env"
+
+if [ "$NUM_ESP" -eq 1 ]; then
+    FIRST_IP=$(echo "$ESP_IPS" | head -1)
+
+    echo -e "${BLUE}📝 Actualizando .env con IP: ${FIRST_IP}${NC}"
+
+    if [ -f "$ENV_FILE" ]; then
+        # Actualizar WEBREPL_IP en .env existente
+        if grep -q "^WEBREPL_IP=" "$ENV_FILE"; then
+            # Reemplazar valor existente
+            sed -i "s/^WEBREPL_IP=.*/WEBREPL_IP=$FIRST_IP/" "$ENV_FILE"
+            echo -e "${GREEN}✅ .env actualizado: WEBREPL_IP=$FIRST_IP${NC}\n"
+        else
+            # Agregar línea nueva
+            echo "WEBREPL_IP=$FIRST_IP" >> "$ENV_FILE"
+            echo -e "${GREEN}✅ .env actualizado: WEBREPL_IP=$FIRST_IP${NC}\n"
+        fi
+    else
+        # Crear .env desde .env.example y actualizar IP
+        if [ -f "$PROJECT_DIR/.env.example" ]; then
+            cp "$PROJECT_DIR/.env.example" "$ENV_FILE"
+            sed -i "s/^WEBREPL_IP=.*/WEBREPL_IP=$FIRST_IP/" "$ENV_FILE"
+            echo -e "${GREEN}✅ .env creado y actualizado: WEBREPL_IP=$FIRST_IP${NC}\n"
+        else
+            echo -e "${YELLOW}⚠️  No se encontró .env.example, creando .env básico${NC}"
+            echo "WEBREPL_IP=$FIRST_IP" > "$ENV_FILE"
+            echo -e "${GREEN}✅ .env creado: WEBREPL_IP=$FIRST_IP${NC}\n"
+        fi
+    fi
+
+    echo -e "${BLUE}💡 Para deployar:${NC}"
+    echo "   python3 tools/deploy_wifi.py gallinero"
+    echo
+elif [ "$NUM_ESP" -gt 1 ]; then
+    echo -e "${YELLOW}⚠️  Se encontraron múltiples dispositivos${NC}"
+    echo -e "${YELLOW}   No se actualizó .env automáticamente${NC}\n"
+
+    echo -e "${BLUE}💡 Para actualizar .env manualmente:${NC}"
+    FIRST_IP=$(echo "$ESP_IPS" | head -1)
+    echo "   Edita .env y cambia WEBREPL_IP a la IP correcta"
+    echo
+
+    echo -e "${BLUE}💡 Para probar WebREPL en cada IP:${NC}"
+    echo "$ESP_IPS" | while read -r ip; do
+        echo "   python3 tools/find_esp8266.py --test-only $ip"
+    done
+    echo
+
+    echo -e "${BLUE}💡 Para deployar con IP específica:${NC}"
+    echo "   python3 tools/deploy_wifi.py gallinero $FIRST_IP"
+    echo
+fi

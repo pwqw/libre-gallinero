@@ -3,8 +3,7 @@
 read_logs.py - Lee logs del ESP8266 en tiempo real via WebREPL (NO INVASIVO)
 
 Uso:
-    python3 tools/read_logs.py              # Auto-descubre IP, modo pasivo
-    python3 tools/read_logs.py heladera     # Usa IP cacheada de heladera
+    python3 tools/read_logs.py              # Usa IP del .env, modo pasivo
     python3 tools/read_logs.py 192.168.1.50 # IP específica
     python3 tools/read_logs.py --restart    # Reinicia main.py (invasivo)
     python3 tools/read_logs.py --history    # Muestra buffer histórico
@@ -24,7 +23,6 @@ script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir / 'common'))
 
 from webrepl_client import WebREPLClient
-from ip_cache import get_cached_ip
 
 # ANSI colors
 RED = '\033[31m'
@@ -63,21 +61,13 @@ def main():
     # Detectar directorio del proyecto
     project_dir = script_dir.parent
 
-    # Cargar IP cacheada si existe
-    cached_ip = None
-    if not ip_arg and app_name:
-        cached_ip = get_cached_ip(app_name, verbose=True)
-        print()
-
-    # Conectar a WebREPL
+    # Conectar a WebREPL (usa .env o IP manual)
     auto_discover = not bool(ip_arg)
     client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
 
-    # Configurar IP
+    # Configurar IP si se especificó manualmente
     if ip_arg:
         client.ip = ip_arg
-    elif cached_ip:
-        client.ip = cached_ip
 
     if not client.connect():
         sys.exit(1)

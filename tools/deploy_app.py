@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-Wrapper para deploy_wifi.py con soporte de caché de IPs por app.
-Acelera el descubrimiento de ESP8266 guardando la última IP exitosa.
+Wrapper simplificado para deploy_wifi.py.
+Usa siempre la IP del .env y hace git pull antes del deploy.
 
 Uso:
     python3 tools/deploy_app.py blink
     python3 tools/deploy_app.py gallinero
     python3 tools/deploy_app.py heladera
-    python3 tools/deploy_app.py <app> <ip_opcional>
 
 Este script:
-1. Carga la IP cacheada para la app (si existe)
-2. Actualiza el repo con git pull
-3. Ejecuta deploy_wifi.py con la app especificada
-4. Guarda la IP exitosa en el caché para próximas ejecuciones
+1. Actualiza el repo con git pull
+2. Ejecuta deploy_wifi.py con la app especificada
+3. La IP se obtiene siempre del .env
 """
 
 import sys
@@ -24,18 +22,16 @@ from pathlib import Path
 script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 
-from common.ip_cache import get_cached_ip, save_cached_ip
 from common.webrepl_client import GREEN, YELLOW, BLUE, RED, NC
 
 
 def main():
     if len(sys.argv) < 2:
-        print(f"{RED}❌ Uso: {sys.argv[0]} <app_name> [ip_opcional]{NC}")
+        print(f"{RED}❌ Uso: {sys.argv[0]} <app_name>{NC}")
         print(f"   Apps válidas: blink, gallinero, heladera")
         sys.exit(1)
 
     app_name = sys.argv[1]
-    ip_arg = sys.argv[2] if len(sys.argv) > 2 else None
 
     print(f"{BLUE}🐔 Libre-Gallinero Deploy: {app_name}{NC}\n")
 
@@ -66,23 +62,8 @@ def main():
 
     print()
 
-    # Cargar IP cacheada si no se especificó una
-    cached_ip = None
-    if not ip_arg:
-        cached_ip = get_cached_ip(app_name, verbose=True)
-        if cached_ip:
-            print()
-
-    # Construir argumentos para deploy_wifi.py
+    # Construir argumentos para deploy_wifi.py (sin IP, usará .env)
     deploy_args = ['python3', 'tools/deploy_wifi.py', app_name]
-
-    # Si se especificó IP manualmente, usarla (tiene prioridad sobre caché)
-    if ip_arg:
-        deploy_args.append(ip_arg)
-        print(f"{BLUE}🌐 Usando IP especificada: {ip_arg}{NC}\n")
-    elif cached_ip:
-        # Pasar la IP cacheada como argumento
-        deploy_args.append(cached_ip)
 
     # Ejecutar deploy_wifi.py
     print(f"{BLUE}🚀 Ejecutando deploy de '{app_name}'...{NC}\n")
@@ -90,23 +71,12 @@ def main():
     print()
 
     try:
-        result = subprocess.run(
-            deploy_args,
-            cwd=project_dir,
-            env={**subprocess.os.environ, 'DEPLOY_APP_NAME': app_name}  # Pasar app_name en env
-        )
+        result = subprocess.run(deploy_args, cwd=project_dir)
 
         if result.returncode == 0:
-            # Deploy exitoso - guardar IP en caché
-            # La IP fue descubierta por deploy_wifi.py, necesitamos extraerla
-            # Para esto, vamos a modificar deploy_wifi.py para que guarde en caché
-
             print()
             print("━" * 50)
             print(f"{GREEN}✅ Deploy de '{app_name}' completado exitosamente{NC}")
-
-            # NOTA: El guardado de caché ahora se hace desde deploy_wifi.py
-            # usando la variable de entorno DEPLOY_APP_NAME
             sys.exit(0)
         else:
             print()
