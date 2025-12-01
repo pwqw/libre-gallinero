@@ -26,9 +26,16 @@ def log(msg):
     except:
         pass
 
-def has_valid_time():
+def has_valid_time(last_ntp=0, max_drift=300):
+    # Verifica tiempo válido y sin drift excesivo
     try:
-        return time.localtime()[0] > 2020
+        import time
+        tm = time.localtime()
+        if tm[0] < 2020 or tm[0] > 2030:
+            return False
+        if last_ntp > 0 and (time.time() - last_ntp) > max_drift:
+            return False
+        return True
     except:
         return False
 
@@ -69,7 +76,15 @@ def run(cfg):
             led.on()
             time.sleep(0.1)
 
-        has_ntp = has_valid_time()
+        # Obtener max_drift de configuración
+        max_drift = 300  # default 5 minutos
+        try:
+            max_drift_str = cfg.get('MAX_TIME_DRIFT_SECONDS', '300')
+            max_drift = int(max_drift_str)
+        except:
+            pass
+
+        has_ntp = has_valid_time(persistent_state.get('last_ntp_timestamp', 0), max_drift)
         fridge_on, cycle_elapsed = state_module.recover_state_after_boot(persistent_state, has_ntp)
 
         if fridge_on:
@@ -89,7 +104,7 @@ def run(cfg):
 
         while True:
             current_time = time.time()
-            has_ntp = has_valid_time()
+            has_ntp = has_valid_time(persistent_state.get('last_ntp_timestamp', 0), max_drift)
 
             # TEST MODE: Minutos pares ON, impares OFF
             if has_ntp:
@@ -179,7 +194,7 @@ def run(cfg):
                 persistent_state['cycle_elapsed_seconds'] = 0
                 persistent_state['last_save_timestamp'] = current_time
                 if has_ntp:
-                    persistent_state['last_ntp_timestamp'] = current_time
+                    state_module.update_ntp_timestamp(persistent_state, current_time)
 
                 if state_module.save_state(persistent_state):
                     log('Estado guardado ✓')
@@ -198,7 +213,7 @@ def run(cfg):
                 persistent_state['total_runtime_seconds'] += CHECKPOINT_INTERVAL
 
                 if has_ntp:
-                    persistent_state['last_ntp_timestamp'] = current_time
+                    state_module.update_ntp_timestamp(persistent_state, current_time)
 
                 state_module.save_state(persistent_state)
                 last_checkpoint_time = current_time
@@ -218,8 +233,8 @@ def run(cfg):
             elapsed = time.time() - cycle_start
             persistent_state['cycle_elapsed_seconds'] = elapsed
             persistent_state['last_save_timestamp'] = time.time()
-            if has_valid_time():
-                persistent_state['last_ntp_timestamp'] = time.time()
+            if has_valid_time(persistent_state.get('last_ntp_timestamp', 0), max_drift):
+                state_module.update_ntp_timestamp(persistent_state, time.time())
             state_module.save_state(persistent_state)
             log('Estado guardado antes de salir ✓')
         except:

@@ -10,7 +10,9 @@ DEFAULT_CONFIG = {
     'WEBREPL_PASSWORD': 'admin',
     'LATITUDE': '-31.4167',
     'LONGITUDE': '-64.1833',
-    'APP': 'blink'
+    'APP': 'blink',
+    'NTP_RESYNC_INTERVAL_SECONDS': '86400',  # 24 horas
+    'MAX_TIME_DRIFT_SECONDS': '300'  # 5 minutos
 }
 
 def log(msg):

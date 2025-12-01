@@ -88,6 +88,12 @@ La app mantiene el estado de los ciclos a través de reinicios y cortes de luz u
 - **Corte largo (>2h)**: Resetea ciclo por deriva del reloj interno
 - **Checkpoints**: Guarda estado cada 10 min + en cada cambio de ciclo
 
+**Mitigación de drift del reloj**:
+- **Re-sincronización periódica**: NTP se re-sincroniza automáticamente cada 24 horas (configurable vía `NTP_RESYNC_INTERVAL_SECONDS`)
+- **Detección de drift**: Valida que el tiempo no tenga drift excesivo (>5 min por defecto, configurable vía `MAX_TIME_DRIFT_SECONDS`)
+- **Validación de tiempo**: Verifica rango de año (2020-2030) y coherencia temporal antes de usar NTP
+- **Modo degradado**: Si se detecta drift excesivo o tiempo inválido, cae a modo degradado (sin NTP)
+
 ## Lógica de Control
 
 1. **Con NTP (horario conocido):**
@@ -96,6 +102,26 @@ La app mantiene el estado de los ciclos a través de reinicios y cortes de luz u
    - LED encendido cuando heladera está en modo OFF
    - LED apagado cuando relé activa heladera
 
-2. **Sin NTP (sin hora):**
+2. **Sin NTP (sin hora o drift excesivo):**
    - LED parpadeante cada 0.5s
    - Ciclos de 30 min ON/OFF continuos (sin descanso nocturno)
+   - Se activa automáticamente si:
+     - No hay sincronización NTP inicial
+     - Drift del reloj excede `MAX_TIME_DRIFT_SECONDS` (default 300s = 5 min)
+     - Año fuera de rango válido (2020-2030)
+
+## Configuración NTP
+
+Variables de configuración en `.env`:
+
+```bash
+# Intervalo de re-sincronización NTP (segundos)
+# Default: 86400 (24 horas)
+NTP_RESYNC_INTERVAL_SECONDS=86400
+
+# Drift máximo permitido antes de caer a modo degradado (segundos)
+# Default: 300 (5 minutos)
+MAX_TIME_DRIFT_SECONDS=300
+```
+
+**Nota**: Estas configuraciones aplican a todas las apps que usan NTP, no solo heladera.

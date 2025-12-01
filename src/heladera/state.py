@@ -99,6 +99,10 @@ def save_state(state):
         log(f"ERROR inesperado: {e}")
         return False
 
+def update_ntp_timestamp(state, ts):
+    # Actualiza last_ntp_timestamp con timestamp actual
+    state['last_ntp_timestamp'] = ts
+
 def recover_state_after_boot(state, has_ntp):
     """
     Recupera estado inteligente tras boot.
@@ -168,6 +172,7 @@ def recover_state_after_boot(state, has_ntp):
 
     state['fridge_on'] = fridge_on
     state['cycle_elapsed_seconds'] = remainder
-    state['last_ntp_timestamp'] = current_timestamp
+    # Actualizar last_ntp_timestamp si es significativamente nuevo
+    update_ntp_timestamp(state, current_timestamp)
 
     return (fridge_on, remainder)

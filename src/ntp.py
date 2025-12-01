@@ -1,8 +1,11 @@
 # ntp.py - NTP sync w/timezone
+# Sincroniza tiempo NTP y aplica timezone offset basado en longitud
 import logger
 def log(msg):
  logger.log('ntp',msg)
+
 def sync_ntp(longitude=None):
+    # Sincroniza NTP y aplica timezone. Retorna (success, timestamp_utc)
     import ntptime,utime,time
     log("=== NTP ===")
     tz_offset=0
@@ -18,11 +21,12 @@ def sync_ntp(longitude=None):
         try:
             log(f"NTP {i+1}/5")
             ntptime.settime()
+            # Guardar timestamp UTC ANTES de aplicar timezone
+            timestamp_utc=utime.time()
             if tz_offset!=0:
                 import machine
                 rtc=machine.RTC()
-                ct=utime.time()
-                at=ct+(tz_offset*3600)
+                at=timestamp_utc+(tz_offset*3600)
                 rtc.datetime(utime.localtime(at))
             try:
                 tm=utime.localtime()
@@ -30,10 +34,10 @@ def sync_ntp(longitude=None):
                 log(f"{tm[2]:02d}/{tm[1]:02d}/{tm[0]}")
             except:pass
             log("✓ NTP OK")
-            return True
+            return (True,timestamp_utc)
         except Exception as e:
             log(f"✗ NTP {i+1}/5:{e}")
             if i<4:time.sleep(2)
     log("✗ NTP FAIL")
-    return False
+    return (False,0)
 

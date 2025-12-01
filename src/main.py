@@ -12,6 +12,7 @@ def feed_wdt():
 def main():
     global _wdt,_logger
     import gc
+    import time
     import logger
     _logger=logger
     logger.init(100)
@@ -47,8 +48,17 @@ def main():
     # Convert to float if string (from .env config)
     if isinstance(longitude, str):
         longitude=float(longitude)
-    ntp_ok=ntp.sync_ntp(longitude=longitude)
+    ntp_ok,ntp_timestamp=ntp.sync_ntp(longitude=longitude)
     if not ntp_ok:log("⚠ NTP falló")
+    else:log(f"NTP sync OK")
+    
+    # Configurar intervalo de resync NTP
+    ntp_resync_interval=86400  # default 24 horas
+    try:
+        ntp_resync_str=cfg.get('NTP_RESYNC_INTERVAL_SECONDS','86400')
+        ntp_resync_interval=int(ntp_resync_str)
+    except:pass
+    last_ntp_sync_time=ntp_timestamp if ntp_ok else 0
     feed_wdt()
     gc.collect()
 
@@ -95,10 +105,10 @@ def main():
     log("="*40)
 
     # Loop principal cooperativo (NO bloquea WebREPL)
-    import time
     tick_count=0
     webrepl_delay=0.01  # 10ms: libera WebREPL frecuentemente
     app_tick_interval=10  # Ejecutar app cada 10 loops (100ms)
+    ntp_resync_check_interval=3600  # Verificar resync cada hora (3600 ticks × 10ms = 36s, pero check cada 360000 ticks = 1h)
 
     while True:
         feed_wdt()
@@ -113,6 +123,30 @@ def main():
             except Exception as e:
                 log(f"⚠ App error:{e}")
                 app_gen=None
+
+        # Verificar resync NTP periódicamente (cada hora)
+        if tick_count%360000==0 and tick_count>0:  # 360000 ticks × 10ms = 3600s = 1h
+            current_time=time.time()
+            # Verificar si necesitamos resync
+            if last_ntp_sync_time==0 or (current_time-last_ntp_sync_time)>=ntp_resync_interval:
+                log(f"Resync NTP (último: {last_ntp_sync_time}, intervalo: {ntp_resync_interval}s)")
+                feed_wdt()
+                try:
+                    import network
+                    wlan=network.WLAN(network.STA_IF)
+                    if wlan.isconnected():
+                        ntp_ok,ntp_timestamp=ntp.sync_ntp(longitude=longitude)
+                        if ntp_ok:
+                            last_ntp_sync_time=ntp_timestamp
+                            log(f"✓ NTP resync OK: {ntp_timestamp}")
+                        else:
+                            log("✗ NTP resync falló")
+                    else:
+                        log("⚠ WiFi desconectado, skip NTP resync")
+                except Exception as e:
+                    log(f"⚠ Error NTP resync: {e}")
+                feed_wdt()
+                gc.collect()
 
         # Sleep corto → WebREPL responde rápido
         time.sleep(webrepl_delay)
