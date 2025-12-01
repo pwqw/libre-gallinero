@@ -151,11 +151,16 @@ def main():
         time.sleep(webrepl_delay)
 
         tick_count+=1
-        # Heartbeat cada ~60s (6000 ticks × 10ms)
-        if tick_count%6000==0:
+        # Heartbeat cada ~15s (1500 ticks × 10ms) - más frecuente para WebREPL
+        if tick_count%1500==0:
             gc.collect()
             tm=time.localtime()
-            log(f"💓 {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d} | Mem:{gc.mem_free()}")
+            # Formatear hora si hay NTP (año > 2000 indica hora válida)
+            if tm[0]>2000:
+                hora_str=f"{tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}"
+            else:
+                hora_str="--:--:--"
+            log(f"💓 {hora_str} | Mem:{gc.mem_free()}B | App:{app_name} running")
 
 if __name__=='__main__':
     try:main()

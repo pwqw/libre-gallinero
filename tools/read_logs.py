@@ -17,6 +17,7 @@ Modo por defecto (NO INVASIVO):
 import sys
 import time
 from pathlib import Path
+import websocket
 
 # Agregar directorio de herramientas al path
 script_dir = Path(__file__).parent.absolute()
@@ -69,7 +70,10 @@ def main():
     if ip_arg:
         client.ip = ip_arg
 
-    if not client.connect():
+    # En modo pasivo (no restart), NO interrumpir el programa
+    # En modo restart, SÍ interrumpir para reiniciar
+    interrupt_on_connect = restart_mode
+    if not client.connect(interrupt_program=interrupt_on_connect):
         sys.exit(1)
 
     # Modo histórico: leer buffer y salir
@@ -146,6 +150,7 @@ def main():
         else:
             # MODO PASIVO: Solo leer stdout actual sin interrumpir
             print(f"{GREEN}📖 Modo pasivo: leyendo stdout sin interrumpir programa{NC}\n")
+            print(f"{BLUE}💡 Esperando logs... (heartbeat cada ~15s){NC}\n")
             # Limpiar buffer antiguo
             try:
                 client.ws.settimeout(0.1)
@@ -153,12 +158,18 @@ def main():
                     client.ws.recv()
             except:
                 pass
-            client.ws.settimeout(1.0)
+            # Timeout más corto para lectura más reactiva
+            client.ws.settimeout(0.5)
 
         # Leer logs continuamente
+        last_log_time = time.time()
+        no_data_warning_shown = False
         while True:
             try:
                 data = client.ws.recv()
+                last_log_time = time.time()
+                no_data_warning_shown = False
+                
                 if isinstance(data, bytes):
                     text = data.decode('utf-8', errors='replace')
                 else:
@@ -183,8 +194,15 @@ def main():
                         print(text, end='')
                     sys.stdout.flush()
 
+            except websocket.WebSocketTimeoutException:
+                # Timeout es normal, verificar si hay datos recientes
+                elapsed = time.time() - last_log_time
+                if elapsed > 30 and not no_data_warning_shown:
+                    print(f"{YELLOW}⏳ Sin logs por {int(elapsed)}s (normal si app no genera output){NC}")
+                    no_data_warning_shown = True
+                time.sleep(0.1)
             except Exception as e:
-                # Timeout es normal, continuar
+                # Otros errores: continuar
                 time.sleep(0.1)
 
     except KeyboardInterrupt:

@@ -12,6 +12,9 @@ def log(tag,msg):
  print(m)
  try:
   if hasattr(sys.stdout,'flush'):sys.stdout.flush()
+  # Forzar flush adicional para WebREPL
+  import gc
+  gc.collect()
  except:pass
  if _buf is not None:
   _buf.append(m)
