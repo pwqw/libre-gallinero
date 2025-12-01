@@ -1,6 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # -*- coding: utf-8 -*-
 # Shortcut para leer logs del ESP8266 (MODO NO INVASIVO)
+# Muestra historial + tiempo real (por defecto incluye historial)
 
 set -e
 set -u
@@ -12,9 +13,10 @@ source "$HOME/libre-gallinero/termux/common.sh"
 
 print_banner "LEER LOGS ESP8266 (PASIVO)"
 
-# Ejecutar script de logs en modo no invasivo (por defecto)
-# Para modo invasivo usar: python3 tools/read_logs.py heladera --restart
-# Para ver historial usar: python3 tools/read_logs.py heladera --history
+# Ejecutar script de logs en modo no invasivo
+# Modo por defecto: muestra historial primero, luego tiempo real
+# Para solo historial: python3 tools/read_logs.py heladera --history
+# Para reiniciar app: python3 tools/read_logs.py heladera --restart
 if python3 tools/read_logs.py heladera; then
     pause
 else

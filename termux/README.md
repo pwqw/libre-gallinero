@@ -221,11 +221,18 @@ El script automáticamente:
 Si instalaste Termux Widget, puedes usar los shortcuts:
 - **Update Setup**: Actualiza el repositorio y dependencias
 - **Abrir REPL**: Abre REPL interactivo del ESP8266
-- **Ver Logs**: Lee logs del ESP8266 en tiempo real (NUEVO)
+- **Ver Logs**: Lee logs del ESP8266 (muestra historial + tiempo real, no invasivo)
 - **Limpiar ESP8266**: Limpia archivos del ESP8266 de forma interactiva
 - **Deploy Blink**: Despliega app Blink (LED test) con caché de IP
 - **Deploy Gallinero**: Despliega app Gallinero (producción) con caché de IP
 - **Deploy Heladera**: Despliega app Heladera (experimental) con caché de IP
+
+**Nota sobre "Ver Logs":**
+- Muestra primero el buffer histórico (últimos 100 logs)
+- Luego continúa leyendo en tiempo real
+- No interrumpe el programa en ejecución
+- Para solo historial: `python3 tools/read_logs.py heladera --history`
+- Para reiniciar app: `python3 tools/read_logs.py heladera --restart`
 
 **Ventajas del caché de IPs:**
 - Primera ejecución: escanea red buscando ESP8266 en puerto 8266 (~10-30s)

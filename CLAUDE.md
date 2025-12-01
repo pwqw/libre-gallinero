@@ -241,9 +241,10 @@ wlan.connect(ssid, password)
 **Logging System:**
 - `logger.py`: Buffer circular RAM-only (~2KB, 100 líneas)
 - Todos los módulos usan `logger.log(tag, msg)`
-- `read_logs.py`: Modo NO INVASIVO por defecto (no reinicia programa)
-- `--history`: Ver buffer histórico sin interrumpir
-- `--restart`: Modo invasivo (reinicia main.py)
+- `read_logs.py`: Modo NO INVASIVO por defecto
+  - **Modo por defecto**: Muestra historial primero, luego tiempo real (no reinicia programa)
+  - `--history`: Solo buffer histórico y sale (útil para ver logs rápidos)
+  - `--restart`: Modo invasivo (reinicia main.py, no la placa física)
 
 ---
 

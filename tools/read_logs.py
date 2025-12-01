@@ -3,14 +3,16 @@
 read_logs.py - Lee logs del ESP8266 en tiempo real via WebREPL (NO INVASIVO)
 
 Uso:
-    python3 tools/read_logs.py              # Usa IP del .env, modo pasivo
+    python3 tools/read_logs.py              # Modo pasivo: historial + tiempo real
     python3 tools/read_logs.py 192.168.1.50 # IP específica
-    python3 tools/read_logs.py --restart    # Reinicia main.py (invasivo)
-    python3 tools/read_logs.py --history    # Muestra buffer histórico
+    python3 tools/read_logs.py --restart     # Reinicia main.py (invasivo)
+    python3 tools/read_logs.py --history    # Solo buffer histórico (y sale)
 
 Modo por defecto (NO INVASIVO):
+    - Muestra primero el buffer histórico (últimos 100 logs)
+    - Luego continúa leyendo en tiempo real
     - NO reinicia el programa
-    - Solo lee stdout actual sin interrumpir
+    - NO interrumpe el programa
     - Mantiene conexión WiFi estable
 """
 
@@ -33,6 +35,48 @@ BLUE = '\033[34m'
 MAGENTA = '\033[35m'
 CYAN = '\033[36m'
 NC = '\033[0m'  # No Color
+
+def read_history_buffer(client):
+    """
+    Lee el buffer histórico de logger.py y lo retorna como string.
+    
+    Args:
+        client: Instancia de WebREPLClient conectada
+    
+    Returns:
+        str: Contenido del buffer histórico o "" si hay error
+    """
+    try:
+        # Limpiar buffer primero
+        client.ws.settimeout(0.2)
+        try:
+            while True:
+                client.ws.recv()
+        except:
+            pass
+
+        # Obtener buffer histórico
+        client.ws.settimeout(5.0)
+        client.ws.send("import logger\r\n")
+        time.sleep(0.3)
+        client.ws.send("print(logger.get())\r\n")
+        time.sleep(1.0)
+
+        # Leer respuesta
+        history_output = ""
+        try:
+            for _ in range(10):
+                data = client.ws.recv()
+                if isinstance(data, bytes):
+                    history_output += data.decode('utf-8', errors='replace')
+                else:
+                    history_output += data
+        except:
+            pass
+
+        return history_output
+    except Exception as e:
+        return ""
 
 def main():
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
@@ -81,33 +125,8 @@ def main():
         print(f"\n{GREEN}✅ Conectado - Leyendo buffer histórico{NC}\n")
         print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
         try:
-            # Limpiar buffer primero
-            client.ws.settimeout(0.2)
-            try:
-                while True:
-                    client.ws.recv()
-            except:
-                pass
-
-            # Obtener buffer histórico
-            client.ws.settimeout(5.0)
-            client.ws.send("import logger\r\n")
-            time.sleep(0.3)
-            client.ws.send("print(logger.get())\r\n")
-            time.sleep(1.0)
-
-            # Leer respuesta
-            history_output = ""
-            try:
-                for _ in range(10):
-                    data = client.ws.recv()
-                    if isinstance(data, bytes):
-                        history_output += data.decode('utf-8', errors='replace')
-                    else:
-                        history_output += data
-            except:
-                pass
-
+            history_output = read_history_buffer(client)
+            
             # Mostrar historial
             if history_output:
                 print(f"{GREEN}{history_output}{NC}")
@@ -123,6 +142,21 @@ def main():
     # Modo normal o restart
     mode_desc = "Leyendo logs en tiempo real (PASIVO)" if not restart_mode else "Reiniciando y leyendo logs (INVASIVO)"
     print(f"\n{GREEN}✅ Conectado - {mode_desc}{NC}")
+    
+    # En modo pasivo, mostrar historial primero
+    if not restart_mode:
+        print(f"{BLUE}📜 Leyendo buffer histórico...{NC}\n")
+        history_output = read_history_buffer(client)
+        if history_output:
+            print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+            print(f"{GREEN}{history_output}{NC}")
+            print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+        else:
+            print(f"{YELLOW}⚠️  No hay logs en buffer{NC}\n")
+        
+        print(f"{GREEN}📡 Continuando en tiempo real...{NC}")
+        print(f"{BLUE}💡 Esperando logs... (heartbeat cada ~15s){NC}\n")
+    
     print(f"{YELLOW}   Presiona Ctrl-C para salir{NC}\n")
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
@@ -148,18 +182,16 @@ def main():
             client.ws.send("main.main()\r\n")
             time.sleep(0.3)
         else:
-            # MODO PASIVO: Solo leer stdout actual sin interrumpir
-            print(f"{GREEN}📖 Modo pasivo: leyendo stdout sin interrumpir programa{NC}\n")
-            print(f"{BLUE}💡 Esperando logs... (heartbeat cada ~15s){NC}\n")
-            # Limpiar buffer antiguo
+            # MODO PASIVO: Ya mostramos historial arriba, ahora solo leer stdout
+            # Limpiar buffer antiguo después de leer historial
             try:
                 client.ws.settimeout(0.1)
                 while True:
                     client.ws.recv()
             except:
                 pass
-            # Timeout más corto para lectura más reactiva
-            client.ws.settimeout(0.5)
+            # Timeout más largo para capturar logs (WebREPL puede ser lento)
+            client.ws.settimeout(2.0)
 
         # Leer logs continuamente
         last_log_time = time.time()
@@ -197,8 +229,10 @@ def main():
             except websocket.WebSocketTimeoutException:
                 # Timeout es normal, verificar si hay datos recientes
                 elapsed = time.time() - last_log_time
-                if elapsed > 30 and not no_data_warning_shown:
-                    print(f"{YELLOW}⏳ Sin logs por {int(elapsed)}s (normal si app no genera output){NC}")
+                # Aumentar umbral a 45s (3 heartbeats) antes de advertir
+                if elapsed > 45 and not no_data_warning_shown:
+                    print(f"{YELLOW}⏳ Sin logs por {int(elapsed)}s (WebREPL puede no capturar stdout pasivamente){NC}")
+                    print(f"{BLUE}💡 Usa --restart para reiniciar y ver logs desde inicio{NC}")
                     no_data_warning_shown = True
                 time.sleep(0.1)
             except Exception as e:
