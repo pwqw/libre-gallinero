@@ -42,6 +42,10 @@ sys.path.insert(0, str(script_dir))
 from common.webrepl_client import WebREPLClient, MAX_FILE_SIZE, validate_file_size, GREEN, YELLOW, BLUE, RED, NC
 from common.env_updater import update_env_for_app, cleanup_temp_env
 
+# ANSI colors adicionales para logs
+CYAN = '\033[36m'
+MAGENTA = '\033[35m'
+
 
 def get_files_to_upload(project_dir, app_name=None):
     """
@@ -131,6 +135,110 @@ def verify_deploy(client):
     else:
         print(f"{YELLOW}⚠️  No se pudo verificar main.py (puede ser normal){NC}")
         return True  # No fallar por esto
+
+
+def wait_for_reboot(ip, password, project_dir, max_attempts=3, initial_wait=5):
+    """
+    Espera a que el ESP8266 se reinicie y reconecte a WebREPL.
+    
+    Args:
+        ip: IP del ESP8266
+        password: Password de WebREPL
+        project_dir: Directorio raíz del proyecto
+        max_attempts: Número máximo de intentos de reconexión (default: 3)
+        initial_wait: Tiempo inicial de espera en segundos (default: 5)
+    
+    Returns:
+        WebREPLClient: Cliente conectado, o None si no se pudo conectar
+    """
+    print(f"\n{BLUE}⏳ Esperando reinicio del ESP8266...{NC}")
+    print(f"   Esperando {initial_wait} segundos iniciales...")
+    time.sleep(initial_wait)
+    
+    for attempt in range(1, max_attempts + 1):
+        print(f"   Intento {attempt}/{max_attempts}: Intentando reconectar a WebREPL...", end=' ')
+        sys.stdout.flush()
+        
+        try:
+            client = WebREPLClient(ip=ip, password=password, project_dir=project_dir, verbose=False, auto_discover=False)
+            if client.connect():
+                print(f"{GREEN}✅ Conectado{NC}")
+                return client
+            else:
+                print(f"{YELLOW}✗{NC}")
+        except Exception as e:
+            print(f"{YELLOW}✗ ({e}){NC}")
+        
+        if attempt < max_attempts:
+            wait_time = 5
+            print(f"   Esperando {wait_time} segundos antes del siguiente intento...")
+            time.sleep(wait_time)
+    
+    print(f"{RED}❌ No se pudo reconectar después de {max_attempts} intentos{NC}")
+    return None
+
+
+def stream_logs_after_reboot(client):
+    """
+    Lee logs en tiempo real desde el ESP8266 vía WebREPL (modo pasivo).
+    Similar a read_logs.py pero integrado en el flujo de deploy.
+    
+    Args:
+        client: Instancia de WebREPLClient conectada
+    """
+    print(f"\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+    print(f"{CYAN}📡 Leyendo logs en tiempo real{NC}")
+    print(f"{YELLOW}   Presiona Ctrl-C para salir{NC}")
+    print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+    
+    try:
+        # Limpiar buffer antiguo
+        try:
+            client.ws.settimeout(0.1)
+            while True:
+                client.ws.recv()
+        except:
+            pass
+        
+        client.ws.settimeout(1.0)
+        
+        # Leer logs continuamente
+        while True:
+            try:
+                data = client.ws.recv()
+                if isinstance(data, bytes):
+                    text = data.decode('utf-8', errors='replace')
+                else:
+                    text = data
+                
+                # Filtrar prompts de MicroPython
+                if text and text not in ['>>> ', '>>> \r\n', '\r\n>>> ']:
+                    # Colorear logs según módulo
+                    if '[main]' in text:
+                        print(f"{CYAN}{text}{NC}", end='')
+                    elif '[wifi]' in text:
+                        print(f"{BLUE}{text}{NC}", end='')
+                    elif '[ntp]' in text:
+                        print(f"{MAGENTA}{text}{NC}", end='')
+                    elif '[heladera]' in text:
+                        print(f"{GREEN}{text}{NC}", end='')
+                    elif '[gallinero]' in text:
+                        print(f"{YELLOW}{text}{NC}", end='')
+                    elif 'ERROR' in text or 'Error' in text:
+                        print(f"{RED}{text}{NC}", end='')
+                    else:
+                        print(text, end='')
+                    sys.stdout.flush()
+                    
+            except Exception as e:
+                # Timeout es normal, continuar
+                time.sleep(0.1)
+                
+    except KeyboardInterrupt:
+        print(f"\n\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{YELLOW}🛑 Deteniendo lectura de logs...{NC}")
+        print(f"{GREEN}✅ Programa continúa corriendo en ESP8266{NC}")
+        print(f"{BLUE}💡 No se interrumpió el proceso{NC}\n")
 
 
 def main():
@@ -292,6 +400,10 @@ def main():
     # Verificación post-deploy
     verify_deploy(client)
 
+    # Guardar IP y password para reconexión después del reinicio (antes de cerrar)
+    target_ip = ip_arg if ip_arg else client.config.get('WEBREPL_IP')
+    target_password = client.password
+
     # Cerrar conexión
     client.close()
 
@@ -316,47 +428,45 @@ def main():
             print()
         sys.exit(1)
     
-    # Preguntar si reiniciar
-    print(f"{YELLOW}🔄 ¿Reiniciar ESP8266 para aplicar cambios? (s/N){NC}")
-    print(f"{YELLOW}   ⚠️  NOTA: Si reinicias, el programa se ejecutará automáticamente{NC}")
-    print(f"{YELLOW}   y bloqueará WebREPL hasta que presiones Ctrl-C manualmente{NC}")
-    try:
-        reply = input().strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        reply = 'n'
-
-    if reply == 's':
-        print(f"\n{BLUE}🔄 Reiniciando ESP8266...{NC}")
-
-        # Reconectar para reiniciar
-        client = WebREPLClient(project_dir=project_dir, verbose=False, auto_discover=False)
-        client.ip = ip_arg if ip_arg else client.config.get('WEBREPL_IP')
-        if client.connect():
-            try:
-                # Usar método centralizado reset() (DRY)
-                client.reset()
-            except:
-                pass
-            finally:
-                client.close()
-
-            print(f"{GREEN}✅ Deploy completo - ESP8266 reiniciado{NC}")
-            print(f"{YELLOW}⚠️  El programa se está ejecutando ahora{NC}")
-            print(f"{YELLOW}   Para ver logs o detenerlo, usa: python3 tools/open_repl.py{NC}\n")
-        else:
-            print(f"{RED}❌ No se pudo conectar para reiniciar{NC}\n")
+    # Reinicio automático (sin confirmación)
+    print(f"\n{BLUE}🔄 Reiniciando ESP8266 automáticamente...{NC}")
+    
+    # Reconectar para reiniciar
+    reset_client = WebREPLClient(project_dir=project_dir, verbose=False, auto_discover=False)
+    reset_client.ip = target_ip
+    reset_client.password = target_password
+    
+    if reset_client.connect():
+        try:
+            # Usar método centralizado reset() (DRY)
+            reset_client.reset()
+        except Exception as e:
+            print(f"{YELLOW}⚠️  Error durante reset: {e}{NC}")
+        finally:
+            reset_client.close()
     else:
-        print(f"{GREEN}✅ Deploy completo (sin reiniciar){NC}")
-        print(f"{BLUE}💡 Recomendación:{NC}")
-        print(f"   • Para probar: python3 tools/open_repl.py")
-        print(f"   • Luego: import machine; machine.reset()\n")
-
-    # Pause antes de salir para poder leer mensajes
-    print(f"{YELLOW}Presiona Enter para continuar...{NC}")
-    try:
-        input()
-    except (EOFError, KeyboardInterrupt):
-        pass
+        print(f"{RED}❌ No se pudo conectar para reiniciar{NC}")
+        print(f"{YELLOW}   Deploy completado, pero no se pudo reiniciar{NC}\n")
+        sys.exit(1)
+    
+    # Esperar reinicio y reconectar
+    rebooted_client = wait_for_reboot(
+        ip=target_ip,
+        password=target_password,
+        project_dir=project_dir,
+        max_attempts=3,
+        initial_wait=5
+    )
+    
+    if rebooted_client:
+        try:
+            # Leer logs en tiempo real
+            stream_logs_after_reboot(rebooted_client)
+        finally:
+            rebooted_client.close()
+    else:
+        print(f"{YELLOW}⚠️  Deploy completado, pero no se pudo reconectar para ver logs{NC}")
+        print(f"{BLUE}💡 Puedes ver los logs manualmente con: python3 tools/read_logs.py{NC}\n")
 
 
 if __name__ == '__main__':
