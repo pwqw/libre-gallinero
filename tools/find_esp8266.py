@@ -378,20 +378,33 @@ def main():
             print(f"{GREEN}✅ ESP8266 encontrado en: {esp_ip}{NC}")
             print(f"{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
-            # Preguntar si actualizar .env
+            # Actualizar .env automáticamente si hay exactamente 1 dispositivo
+            # (comportamiento del bash script original)
             current_ip = config.get('WEBREPL_IP', '')
+            num_hosts = len(hosts)
+            
             if current_ip != esp_ip:
-                print(f"{YELLOW}¿Actualizar .env con la nueva IP? (s/N){NC}")
-                print(f"   IP actual en .env: {current_ip}")
-                print(f"   IP encontrada:     {esp_ip}")
-                try:
-                    response = input().strip().lower()
-                    if response == 's':
-                        print()
-                        update_env_ip(project_dir, esp_ip, verbose=True)
-                        print()
-                except (EOFError, KeyboardInterrupt):
+                if num_hosts == 1:
+                    # Un solo dispositivo: actualizar automáticamente
+                    print(f"{BLUE}📝 Actualizando .env automáticamente (1 dispositivo encontrado){NC}")
+                    print(f"   IP anterior: {current_ip}")
+                    print(f"   IP nueva:    {esp_ip}\n")
+                    update_env_ip(project_dir, esp_ip, verbose=True)
                     print()
+                else:
+                    # Múltiples dispositivos: preguntar
+                    print(f"{YELLOW}⚠️  Se encontraron {num_hosts} dispositivos con puerto {port} abierto{NC}")
+                    print(f"   IP actual en .env: {current_ip}")
+                    print(f"   IP encontrada:     {esp_ip}")
+                    print(f"{YELLOW}¿Actualizar .env con la nueva IP? (s/N){NC}")
+                    try:
+                        response = input().strip().lower()
+                        if response == 's':
+                            print()
+                            update_env_ip(project_dir, esp_ip, verbose=True)
+                            print()
+                    except (EOFError, KeyboardInterrupt):
+                        print()
 
             print(f"💡 Para deployar:")
             print(f"   python3 tools/deploy_wifi.py blink {esp_ip}")
@@ -419,20 +432,14 @@ def main():
             print(f"{GREEN}✅ ESP8266 encontrado en: {esp_ip}{NC}")
             print(f"{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
-            # Preguntar si actualizar .env
+            # Actualizar .env automáticamente (fallback scan solo encuentra 1)
             current_ip = config.get('WEBREPL_IP', '')
             if current_ip != esp_ip:
-                print(f"{YELLOW}¿Actualizar .env con la nueva IP? (s/N){NC}")
-                print(f"   IP actual en .env: {current_ip}")
-                print(f"   IP encontrada:     {esp_ip}")
-                try:
-                    response = input().strip().lower()
-                    if response == 's':
-                        print()
-                        update_env_ip(project_dir, esp_ip, verbose=True)
-                        print()
-                except (EOFError, KeyboardInterrupt):
-                    print()
+                print(f"{BLUE}📝 Actualizando .env automáticamente{NC}")
+                print(f"   IP anterior: {current_ip}")
+                print(f"   IP nueva:    {esp_ip}\n")
+                update_env_ip(project_dir, esp_ip, verbose=True)
+                print()
 
             print(f"💡 Para deployar:")
             print(f"   python3 tools/deploy_wifi.py blink {esp_ip}")

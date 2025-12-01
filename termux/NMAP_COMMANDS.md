@@ -121,23 +121,9 @@ nmap -p8266 --open -T5 -n --min-rate 1000 $NETWORK
 
 ---
 
-## 📋 Scripts automatizados
+## 📋 Script automatizado
 
-### Script bash (incluido en el proyecto)
-
-```bash
-# Usar el script automático
-bash termux/find_esp.sh
-
-# Output:
-# 🐔 Buscador ESP8266 con nmap
-# 📡 IP local: 192.168.1.50
-# 📡 Rango: 192.168.1.0/24
-# ✅ Dispositivos con puerto 8266 abierto:
-#    • 192.168.1.123
-```
-
-### Script Python (más completo)
+### Script Python (recomendado)
 
 ```bash
 # Escaneo automático con verificación WebREPL
@@ -217,15 +203,12 @@ nmap -p8266 --open -T5 --max-retries 1 $NETWORK
 ### Primera vez:
 
 ```bash
-# 1. Escanear red con nmap
-bash termux/find_esp.sh
+# 1. Escanear red con nmap y verificar WebREPL
+python3 tools/find_esp8266.py
 
-# Output: 192.168.1.123 encontrado
+# Output: 192.168.1.123 encontrado y verificado
 
-# 2. Verificar WebREPL
-python3 tools/find_esp8266.py --test-only 192.168.1.123
-
-# 3. Deploy con IP específica
+# 2. Deploy con IP específica (o usar la IP del .env actualizado)
 python3 tools/deploy_wifi.py gallinero 192.168.1.123
 ```
 

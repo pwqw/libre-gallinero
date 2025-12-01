@@ -299,8 +299,6 @@ pkg install nmap
 
 # Buscar ESP8266 (mucho más rápido y confiable)
 python3 tools/find_esp8266.py  # Usa nmap si está disponible
-# O directamente:
-bash termux/find_esp.sh
 ```
 
 **Ventajas de nmap:**
@@ -413,10 +411,9 @@ python tools/open_repl.py
 **Termux (Android):**
 ```bash
 # Buscar ESP8266 (shortcut en Termux:Widget)
-bash termux/find_esp.sh
-
-# O usar el shortcut bonito:
 # "🔍 Buscar ESP8266" en Termux:Widget
+# O directamente:
+python3 tools/find_esp8266.py
 ```
 
 ---
