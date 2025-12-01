@@ -35,7 +35,7 @@ La app **heladera** controla una heladera mediante un relé normalmente cerrado 
  |         [D2] (GPIO2)  <--- LED integrado          |
  |                                                   |
  |         [GND] --------+--- Relay GND              |
- |         [VIN] (5V) ------- Relay VCC              |
+ |         [3V3] --------- Relay VCC                 |
  |                                                   |
  +---------------------------------------------------+
 
@@ -43,7 +43,12 @@ Pines usados:
   D1 (GPIO5)  -> Relay IN (Normally Closed)
   D2 (GPIO2)  -> LED integrado (status indicator)
   GND         -> Relay GND
-  VIN (5V)    -> Relay VCC
+  3V3         -> Relay VCC
+
+⚠️ IMPORTANTE: Usar 3V3 (NO VIN/5V) para evitar leakage current
+   El relay debe alimentarse con 3.3V para que el optoacoplador
+   se apague correctamente cuando GPIO5 está en LOW (0V).
+   Con 5V en VCC, el voltaje residual mantiene el relay activado.
 ```
 
 ## Arquitectura de Persistencia

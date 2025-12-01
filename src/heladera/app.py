@@ -72,10 +72,10 @@ def run(cfg):
         fridge_on, cycle_elapsed = state_module.recover_state_after_boot(persistent_state, has_ntp)
 
         if fridge_on:
-            relay.off()
+            relay.on()
             led.off()
         else:
-            relay.on()
+            relay.off()
             led.on()
         log(f"Estado: {'ON' if fridge_on else 'OFF'}")
 
@@ -95,11 +95,11 @@ def run(cfg):
                 if test_on != fridge_on:
                     fridge_on = test_on
                     if fridge_on:
-                        relay.off()
+                        relay.on()
                         led.off()
                         log('TEST: Minuto PAR - Heladera ON')
                     else:
-                        relay.on()
+                        relay.off()
                         led.on()
                         log('TEST: Minuto IMPAR - Heladera OFF')
                 time.sleep(5)
@@ -112,7 +112,7 @@ def run(cfg):
                 elapsed = current_time - cycle_start
                 if elapsed >= CYCLE_DURATION:
                     fridge_on = not fridge_on
-                    relay.off() if fridge_on else relay.on()
+                    relay.on() if fridge_on else relay.off()
                     log(f'Sin NTP - Ciclo: Heladera {"ON" if fridge_on else "OFF"} (30 min)')
                     persistent_state['fridge_on'] = fridge_on
                     persistent_state['cycle_elapsed_seconds'] = 0
@@ -128,7 +128,7 @@ def run(cfg):
                 continue
             if is_night_time():
                 if fridge_on:
-                    relay.on()
+                    relay.off()
                     led.on()
                     fridge_on = False
                     log('Modo nocturno: heladera apagada (00:00-07:00)')
@@ -138,11 +138,11 @@ def run(cfg):
             if elapsed >= CYCLE_DURATION:
                 fridge_on = not fridge_on
                 if fridge_on:
-                    relay.off()
+                    relay.on()
                     led.off()
                     log('Ciclo: Heladera ON (30 min)')
                 else:
-                    relay.on()
+                    relay.off()
                     led.on()
                     log('Ciclo: Heladera OFF (30 min)')
                 persistent_state['fridge_on'] = fridge_on
@@ -185,7 +185,7 @@ def run(cfg):
         except:
             pass
         try:
-            relay.on()
+            relay.off()
             led.off()
         except:
             pass
