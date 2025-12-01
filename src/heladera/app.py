@@ -1,85 +1,132 @@
-# Heladera App - Modo Debug Simple
-#
-# IMPORTANTE: Hardware "Active Low"
-# - LED pin 2 (NodeMCU built-in): Se enciende con LOW (0), se apaga con HIGH (1)
-# - Relé módulo común: Se activa con LOW (0), se desactiva con HIGH (1)
-# Esto es NORMAL en hardware embebido. El código invierte la lógica para que
-# los logs representen el estado lógico (ON/OFF) en lugar del estado físico (HIGH/LOW).
+# Heladera App - Control basado en hora real
+# Hardware "Active Low": LED pin 2, RELE pin 5
+# Con NTP: 0-29min OFF, 30-59min ON. 00:00-07:00 siempre OFF
+# Sin NTP: ciclos ~30min con drift
 import sys
 try:
     import machine
     import time
     import gc
     import logger
+    import state
 except ImportError:
     print("[heladera/app] ERROR: Módulos MicroPython no encontrados")
 
 RELAY_PIN = 5
 LED_PIN = 2
-CYCLE_DURATION = 60  # 1 minuto para debugging
+CYCLE_DURATION_NO_NTP = 30 * 60  # 30 minutos sin NTP
+NIGHT_START_HOUR = 0
+NIGHT_END_HOUR = 7
+
+def _should_fridge_be_on(tm, has_ntp):
+    if not has_ntp:
+        return None
+    h = tm[3]
+    m = tm[4]
+    if h >= NIGHT_START_HOUR and h < NIGHT_END_HOUR:
+        return False
+    return m >= 30
 
 def run(cfg):
-    """Generador cooperativo - yield cada tick (~100ms desde main.py)"""
-    logger.log('heladera', '=== Heladera App (Debug Mode) ===')
+    logger.log('heladera', '=== Heladera App ===')
     gc.collect()
-    
     try:
-        # Inicializar hardware
+        has_ntp = False
+        try:
+            tm = time.localtime()
+            if tm[0] >= 2020:
+                has_ntp = True
+                logger.log('heladera', f'NTP: {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}')
+        except:
+            pass
+        s = state.load_state()
+        logger.log('heladera', f'Boot #{s["boot_count"]}')
+        if has_ntp:
+            fridge_on, _ = state.recover_state_after_boot(s, True)
+        else:
+            fridge_on, _ = state.recover_state_after_boot(s, False)
         relay = machine.Pin(RELAY_PIN, machine.Pin.OUT)
         led = machine.Pin(LED_PIN, machine.Pin.OUT)
-        logger.log('heladera', f'Hardware OK - RELE pin {RELAY_PIN}, LED pin {LED_PIN}')
+        if fridge_on:
+            relay.off()
+            led.on()
+        else:
+            relay.on()
+            led.off()
+        cycle_start = time.time() if not has_ntp else None
+        last_check = time.time()
+        last_save = time.time()
+        tick = 0
         
-        # Estado inicial: RELE ON, LED OFF
-        # Hardware "active low": LOW (off()) activa relé, HIGH (on()) apaga LED
-        relay.off()  # LOW = relé activado (ON)
-        led.on()     # HIGH = LED apagado (OFF)
-        state_relay_on = True
-        logger.log('heladera', 'Estado inicial: RELE ON, LED OFF')
-        
-        cycle_start = time.time()
-        tick_count = 0
-        
-        # Loop cooperativo principal
         while True:
-            current_time = time.time()
-            elapsed = current_time - cycle_start
-            tick_count += 1
-            
-            # Cada 1 minuto, alternar estado
-            if elapsed >= CYCLE_DURATION:
-                state_relay_on = not state_relay_on
-                
-                if state_relay_on:
-                    # RELE ON, LED OFF
-                    # Hardware "active low": LOW activa relé, HIGH apaga LED
-                    relay.off()  # LOW = relé activado (ON)
-                    led.on()     # HIGH = LED apagado (OFF)
-                    logger.log('heladera', 'CAMBIO: RELE ON, LED OFF')
-                else:
-                    # RELE OFF, LED ON
-                    # Hardware "active low": HIGH desactiva relé, LOW enciende LED
-                    relay.on()   # HIGH = relé desactivado (OFF)
-                    led.off()    # LOW = LED encendido (ON)
-                    logger.log('heladera', 'CAMBIO: RELE OFF, LED ON')
-                
-                cycle_start = current_time
-                logger.log('heladera', f'Ciclo reiniciado (tick #{tick_count})')
-                gc.collect()
-            
-            # Log cada 10 segundos para debugging
-            if tick_count % 100 == 0:  # 100 ticks × 100ms = 10s
-                remaining = CYCLE_DURATION - elapsed
-                logger.log('heladera', f'Estado: RELE {"ON" if state_relay_on else "OFF"}, LED {"OFF" if state_relay_on else "ON"} - {remaining:.1f}s restantes')
-            
-            yield  # Liberar control a main.py
+            t = time.time()
+            tick += 1
+            if t - last_check >= 1.0:
+                last_check = t
+                try:
+                    tm = time.localtime()
+                    should_on = _should_fridge_be_on(tm, has_ntp)
+                    if has_ntp and should_on is not None:
+                        if should_on != fridge_on:
+                            fridge_on = should_on
+                            if fridge_on:
+                                relay.off()
+                                led.on()
+                                logger.log('heladera', f'ON {tm[3]:02d}:{tm[4]:02d}')
+                            else:
+                                relay.on()
+                                led.off()
+                                logger.log('heladera', f'OFF {tm[3]:02d}:{tm[4]:02d}')
+                            s['fridge_on'] = fridge_on
+                            s['cycle_elapsed_seconds'] = 0
+                            s['last_save_timestamp'] = t
+                            state.update_ntp_timestamp(s, t)
+                    elif not has_ntp:
+                        if cycle_start is None:
+                            cycle_start = t
+                        elapsed = t - cycle_start
+                        if elapsed >= CYCLE_DURATION_NO_NTP:
+                            fridge_on = not fridge_on
+                            cycle_start = t
+                            if fridge_on:
+                                relay.off()
+                                led.on()
+                                logger.log('heladera', 'ON (sin NTP)')
+                            else:
+                                relay.on()
+                                led.off()
+                                logger.log('heladera', 'OFF (sin NTP)')
+                            s['fridge_on'] = fridge_on
+                            s['cycle_elapsed_seconds'] = 0
+                            s['last_save_timestamp'] = t
+                        else:
+                            s['cycle_elapsed_seconds'] = elapsed
+                except Exception as e:
+                    logger.log('heladera', f'ERROR: {e}')
+            if t - last_save >= 60.0:
+                try:
+                    state.save_state(s)
+                    last_save = t
+                except:
+                    pass
+            if tick % 1000 == 0:
+                try:
+                    tm = time.localtime()
+                    if has_ntp:
+                        logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {tm[3]:02d}:{tm[4]:02d}')
+                    else:
+                        e = t - cycle_start if cycle_start else 0
+                        r = CYCLE_DURATION_NO_NTP - e
+                        logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {r:.0f}s (sin NTP)')
+                except:
+                    pass
+            yield
             
     except KeyboardInterrupt:
-        logger.log('heladera', 'Interrumpido por usuario')
+        logger.log('heladera', 'Interrumpido')
         try:
-            # Hardware "active low": HIGH desactiva todo
-            relay.on()   # HIGH = relé desactivado
-            led.off()    # LOW = LED encendido (mantener visible durante shutdown)
-            logger.log('heladera', 'Hardware apagado')
+            relay.on()
+            led.off()
         except:
             pass
     except Exception as e:

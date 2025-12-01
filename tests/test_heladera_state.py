@@ -129,47 +129,50 @@ class TestRecoverStateAfterBoot:
         from src.heladera import state
 
         mock_time = sys.modules['time']
-        mock_time.time = Mock(return_value=2000)  # 2000s desde epoch
+        # Simular hora 10:45 (minuto 45 = últimos 30 min = ON)
+        mock_time.time = Mock(return_value=2000)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 10, 45, 30, 0, 1))
 
         test_state = state.get_default_state()
-        test_state['last_save_timestamp'] = 1700  # 300s atrás (5 min)
-        test_state['fridge_on'] = True
-        test_state['cycle_elapsed_seconds'] = 600  # 10 min en ciclo
+        test_state['last_save_timestamp'] = 1700
 
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
 
-        # 5 min pasaron, debería estar en 10+5=15 min del ciclo
+        # Con NTP: minuto 45 (>=30) = ON
         assert fridge_on is True
-        assert elapsed == 900  # 15 min
+        assert elapsed == 0
 
     def test_recover_with_ntp_long_outage(self, mock_modules):
         from src.heladera import state
 
         mock_time = sys.modules['time']
+        # Simular hora 14:20 (minuto 20 = primeros 30 min = OFF)
         mock_time.time = Mock(return_value=10000)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 14, 20, 0, 0, 1))
 
         test_state = state.get_default_state()
         test_state['last_save_timestamp'] = 1000  # 9000s atrás (>2h)
-        test_state['fridge_on'] = False
 
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
 
-        # Corte largo: resetear
-        assert fridge_on is True
+        # Con NTP: minuto 20 (<30) = OFF
+        assert fridge_on is False
         assert elapsed == 0
 
     def test_recover_with_ntp_first_boot(self, mock_modules):
         from src.heladera import state
 
         mock_time = sys.modules['time']
+        # Simular hora 12:35 (minuto 35 = últimos 30 min = ON)
         mock_time.time = Mock(return_value=1000)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 12, 35, 0, 0, 1))
 
         test_state = state.get_default_state()
         # last_save_timestamp = 0 (nunca guardado)
 
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
 
-        # Primer boot con NTP
+        # Con NTP: minuto 35 (>=30) = ON
         assert fridge_on is True
         assert elapsed == 0
         assert test_state['last_ntp_timestamp'] == 1000
@@ -178,36 +181,79 @@ class TestRecoverStateAfterBoot:
         from src.heladera import state
 
         mock_time = sys.modules['time']
+        # Simular hora 15:10 (minuto 10 = primeros 30 min = OFF)
         mock_time.time = Mock(return_value=1000)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 15, 10, 0, 0, 1))
 
         test_state = state.get_default_state()
         test_state['last_save_timestamp'] = 2000  # Reloj retrocedió
 
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
 
-        # Reloj retrocedió: conservador
-        assert fridge_on is True
+        # Con NTP: minuto 10 (<30) = OFF
+        assert fridge_on is False
         assert elapsed == 0
 
     def test_recover_with_ntp_cycle_transition(self, mock_modules):
         from src.heladera import state
 
         mock_time = sys.modules['time']
-        mock_time.time = Mock(return_value=3700)  # 1 hora después
+        # Simular hora 16:45 (minuto 45 = últimos 30 min = ON)
+        mock_time.time = Mock(return_value=3700)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 16, 45, 0, 0, 1))
 
         test_state = state.get_default_state()
         test_state['last_save_timestamp'] = 100
-        test_state['fridge_on'] = True
-        test_state['cycle_elapsed_seconds'] = 100  # 100s en ciclo ON
 
-        # Pasaron 3600s (1 hora) = 2 ciclos completos de 30 min
-        # Ciclo 1 (30 min): ON → OFF
-        # Ciclo 2 (30 min): OFF → ON
-        # Estado debería volver a ON
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
 
+        # Con NTP: minuto 45 (>=30) = ON
         assert fridge_on is True
-        # elapsed_total = 100 + 3600 = 3700
-        # full_cycles = 3700 // 1800 = 2
-        # remainder = 3700 % 1800 = 100
-        assert elapsed == 100
+        assert elapsed == 0
+
+    def test_recover_with_ntp_night_hours(self, mock_modules):
+        from src.heladera import state
+
+        mock_time = sys.modules['time']
+        
+        # Test 00:00 - debe estar OFF
+        mock_time.time = Mock(return_value=1000)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 0, 0, 0, 0, 1))
+        test_state = state.get_default_state()
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
+        assert fridge_on is False, "00:00 debe estar OFF"
+        
+        # Test 03:30 - debe estar OFF (aunque minuto >= 30)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 3, 30, 0, 0, 1))
+        test_state = state.get_default_state()
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
+        assert fridge_on is False, "03:30 debe estar OFF (horario nocturno)"
+        
+        # Test 06:59 - debe estar OFF
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 6, 59, 0, 0, 1))
+        test_state = state.get_default_state()
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
+        assert fridge_on is False, "06:59 debe estar OFF"
+        
+        # Test 07:00 - debe seguir lógica normal (primeros 30 min = OFF)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 7, 0, 0, 0, 1))
+        test_state = state.get_default_state()
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
+        assert fridge_on is False, "07:00 debe estar OFF (minuto 0 < 30)"
+
+    def test_recover_without_ntp_cycle_recovery(self, mock_modules):
+        from src.heladera import state
+
+        mock_time = sys.modules['time']
+        mock_time.time = Mock(return_value=2000)
+
+        test_state = state.get_default_state()
+        test_state['last_save_timestamp'] = 1700  # 300s atrás (5 min)
+        test_state['fridge_on'] = True
+        test_state['cycle_elapsed_seconds'] = 600  # 10 min en ciclo
+
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=False)
+
+        # Sin NTP: 5 min pasaron, debería estar en 10+5=15 min del ciclo
+        assert fridge_on is True
+        assert elapsed == 900  # 15 min
