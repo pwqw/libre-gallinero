@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # -*- coding: utf-8 -*-
-# Shortcut para buscar ESP8266 en la red local usando nmap
+# Shortcut para escanear red local y buscar ESP8266 usando nmap
 # Optimizado para Termux/Android
 
 set -e
@@ -17,7 +17,7 @@ cd "$HOME/libre-gallinero" || {
 # Cargar funciones comunes
 source "$HOME/libre-gallinero/termux/common.sh"
 
-print_banner "🔍 BUSCAR ESP8266 EN LA RED 🔍"
+print_banner "🔍 ESCANEAR RED LOCAL 🔍"
 
 # Verificar que exista .env
 if [ ! -f .env ]; then

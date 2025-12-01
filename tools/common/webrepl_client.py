@@ -124,32 +124,59 @@ def get_network_range(ip):
         return None
 
 
-def test_webrepl_connection(ip, password, port=8266, timeout=2):
-    """Prueba si un IP tiene WebREPL activo"""
+def test_webrepl_connection(ip, password, port=8266, timeout=5):
+    """
+    Prueba si un IP tiene WebREPL activo.
+    Implementación robusta para WiFi lento (Termux/Android).
+
+    Args:
+        ip: IP del dispositivo
+        password: Password WebREPL
+        port: Puerto WebREPL (default: 8266)
+        timeout: Timeout total en segundos (default: 5)
+
+    Returns:
+        bool: True si WebREPL responde correctamente
+    """
     url = f"ws://{ip}:{port}"
     try:
+        # Timeout más largo para WiFi lento (especialmente Termux)
         ws = websocket.create_connection(url, timeout=timeout)
-        time.sleep(0.3)
-        
+
+        # Sleep más largo para dar tiempo al ESP8266
+        time.sleep(0.5)
+
+        # Intentar leer banner inicial (puede no existir)
         try:
-            data = ws.recv(timeout=1)
+            ws.settimeout(1)
+            data = ws.recv()
         except:
             data = ""
-        
+
+        # Enviar password
         ws.send(password + '\r\n')
-        time.sleep(0.3)
-        
+        time.sleep(0.5)
+
+        # Leer respuesta de autenticación
         try:
-            response = ws.recv(timeout=1)
+            ws.settimeout(2)  # Timeout más largo para la respuesta crítica
+            response = ws.recv()
+            if isinstance(response, bytes):
+                response = response.decode('utf-8', errors='ignore')
+
             if "WebREPL connected" in response or ">>>" in response:
                 ws.close()
                 return True
-        except:
+        except Exception as e:
+            logger.debug(f"Error leyendo respuesta de {ip}: {e}")
             pass
-        
+
         ws.close()
         return False
-    except Exception:
+    except ConnectionRefusedError:
+        return False
+    except Exception as e:
+        logger.debug(f"Error conectando a {ip}: {e}")
         return False
 
 
@@ -273,7 +300,8 @@ def find_esp8266_in_network(password, port=8266, verbose=True, max_hosts=None):
         if verbose:
             print(f"   [{i}/{len(active_hosts)}] Probando {host_ip}...", end=' ')
 
-        if test_webrepl_connection(host_ip, password, port, timeout=2):
+        # Timeout más largo para WiFi lento (especialmente Termux)
+        if test_webrepl_connection(host_ip, password, port, timeout=5):
             if verbose:
                 print(f"{GREEN}✅ ESP8266/ESP32 encontrado!{NC}\n")
             return host_ip
@@ -310,7 +338,7 @@ def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True, c
     if cached_ip and cached_ip != '192.168.4.1':
         if verbose:
             print(f"{BLUE}[0/4] Probando IP cacheada: {cached_ip}{NC}")
-        if test_webrepl_connection(cached_ip, password, port, timeout=2):
+        if test_webrepl_connection(cached_ip, password, port, timeout=5):
             if verbose:
                 print(f"{GREEN}✅ ESP8266 encontrado en: {cached_ip} (desde caché){NC}\n")
             return cached_ip
@@ -322,7 +350,7 @@ def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True, c
     if config_ip and config_ip != '192.168.4.1':
         if verbose:
             print(f"{BLUE}[1/4] Probando IP del .env: {config_ip}{NC}")
-        if test_webrepl_connection(config_ip, password, port, timeout=2):
+        if test_webrepl_connection(config_ip, password, port, timeout=5):
             if verbose:
                 print(f"{GREEN}✅ ESP8266 encontrado en: {config_ip} (desde .env){NC}\n")
             return config_ip
@@ -346,7 +374,7 @@ def find_esp8266_smart(config_ip=None, password=None, port=8266, verbose=True, c
     # 3. Fallback: 192.168.4.1 (hotspot)
     if verbose:
         print(f"{BLUE}[3/4] Probando fallback: 192.168.4.1 (hotspot){NC}")
-    if test_webrepl_connection('192.168.4.1', password, port, timeout=2):
+    if test_webrepl_connection('192.168.4.1', password, port, timeout=5):
         if verbose:
             print(f"{GREEN}✅ ESP8266 encontrado en: 192.168.4.1 (hotspot){NC}\n")
         return '192.168.4.1'

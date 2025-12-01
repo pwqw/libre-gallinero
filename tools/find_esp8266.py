@@ -273,7 +273,8 @@ def test_webrepl_on_hosts(hosts, password, port=8266, verbose=True):
         if verbose:
             print(f"   [{i}/{len(hosts_sorted)}] {ip}{vendor_info}...", end=' ')
 
-        if test_webrepl_connection(ip, password, port, timeout=3):
+        # Timeout más largo para WiFi lento (especialmente Termux)
+        if test_webrepl_connection(ip, password, port, timeout=5):
             if verbose:
                 print(f"{GREEN}✅ ESP8266 encontrado!{NC}\n")
             return ip
