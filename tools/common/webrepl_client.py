@@ -20,6 +20,8 @@ RED = '\033[0;31m'
 GREEN = '\033[0;32m'
 YELLOW = '\033[1;33m'
 BLUE = '\033[0;34m'
+CYAN = '\033[0;36m'
+MAGENTA = '\033[0;35m'
 NC = '\033[0m'
 
 # Configuración de logging
@@ -1051,4 +1053,112 @@ except Exception as e:
         """Context manager exit"""
         self.close()
         return False
+
+
+def wait_for_reboot(ip, password, project_dir, max_attempts=5, initial_wait=5):
+    """
+    Espera a que el ESP8266 se reinicie y reconecte a WebREPL.
+    Función común para evitar duplicación de código (DRY).
+    
+    Args:
+        ip: IP del ESP8266
+        password: Password de WebREPL
+        project_dir: Directorio raíz del proyecto
+        max_attempts: Número máximo de intentos de reconexión (default: 5)
+        initial_wait: Tiempo inicial de espera en segundos (default: 5)
+    
+    Returns:
+        WebREPLClient: Cliente conectado, o None si no se pudo conectar
+    """
+    print(f"\n{BLUE}⏳ Esperando reinicio del ESP8266...{NC}")
+    print(f"   Esperando {initial_wait} segundos iniciales...")
+    time.sleep(initial_wait)
+    
+    for attempt in range(1, max_attempts + 1):
+        print(f"   Intento {attempt}/{max_attempts}: Intentando reconectar a WebREPL...", end=' ')
+        sys.stdout.flush()
+        
+        try:
+            client = WebREPLClient(ip=ip, password=password, project_dir=project_dir, verbose=False, auto_discover=False)
+            # Conectar SIN interrumpir el programa (queremos leer logs del boot)
+            if client.connect(interrupt_program=False):
+                print(f"{GREEN}✅ Conectado{NC}")
+                return client
+            else:
+                print(f"{YELLOW}✗{NC}")
+        except Exception as e:
+            print(f"{YELLOW}✗ ({e}){NC}")
+        
+        if attempt < max_attempts:
+            wait_time = 3
+            print(f"   Esperando {wait_time} segundos antes del siguiente intento...")
+            time.sleep(wait_time)
+    
+    print(f"{RED}❌ No se pudo reconectar después de {max_attempts} intentos{NC}")
+    return None
+
+
+def stream_logs(client):
+    """
+    Lee logs en tiempo real desde el ESP8266 vía WebREPL (modo pasivo).
+    Función común para evitar duplicación de código (DRY).
+    
+    Args:
+        client: Instancia de WebREPLClient conectada
+    """
+    print(f"\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+    print(f"{CYAN}📡 Leyendo logs en tiempo real{NC}")
+    print(f"{YELLOW}   Presiona Ctrl-C para salir{NC}")
+    print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+    
+    try:
+        # Limpiar buffer antiguo
+        try:
+            client.ws.settimeout(0.1)
+            while True:
+                client.ws.recv()
+        except:
+            pass
+        
+        client.ws.settimeout(1.0)
+        
+        # Leer logs continuamente
+        while True:
+            try:
+                data = client.ws.recv()
+                if isinstance(data, bytes):
+                    text = data.decode('utf-8', errors='replace')
+                else:
+                    text = data
+                
+                # Filtrar prompts de MicroPython
+                if text and text not in ['>>> ', '>>> \r\n', '\r\n>>> ']:
+                    # Colorear logs según módulo
+                    if '[main]' in text:
+                        print(f"{CYAN}{text}{NC}", end='')
+                    elif '[wifi]' in text:
+                        print(f"{BLUE}{text}{NC}", end='')
+                    elif '[ntp]' in text:
+                        print(f"{MAGENTA}{text}{NC}", end='')
+                    elif '[heladera]' in text:
+                        print(f"{GREEN}{text}{NC}", end='')
+                    elif '[gallinero]' in text:
+                        print(f"{YELLOW}{text}{NC}", end='')
+                    elif '[blink]' in text:
+                        print(f"{MAGENTA}{text}{NC}", end='')
+                    elif 'ERROR' in text or 'Error' in text:
+                        print(f"{RED}{text}{NC}", end='')
+                    else:
+                        print(text, end='')
+                    sys.stdout.flush()
+                    
+            except Exception as e:
+                # Timeout es normal, continuar
+                time.sleep(0.1)
+                
+    except KeyboardInterrupt:
+        print(f"\n\n{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{YELLOW}🛑 Deteniendo lectura de logs...{NC}")
+        print(f"{GREEN}✅ Programa continúa corriendo en ESP8266{NC}")
+        print(f"{BLUE}💡 No se interrumpió el proceso{NC}")
 
