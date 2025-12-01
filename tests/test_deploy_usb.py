@@ -30,7 +30,7 @@ class TestDetectOS:
     def test_detect_os_macos(self, mock_system):
         """Test que detect_os() detecta macOS correctamente"""
         mock_system.return_value = 'Darwin'
-        from tools.deploy_usb import detect_os
+        from tools.common.port_detection import detect_os
         
         result = detect_os()
         
@@ -40,7 +40,7 @@ class TestDetectOS:
     def test_detect_os_linux(self, mock_system):
         """Test que detect_os() detecta Linux correctamente"""
         mock_system.return_value = 'Linux'
-        from tools.deploy_usb import detect_os
+        from tools.common.port_detection import detect_os
         
         result = detect_os()
         
@@ -50,7 +50,7 @@ class TestDetectOS:
     def test_detect_os_windows(self, mock_system):
         """Test que detect_os() detecta Windows correctamente"""
         mock_system.return_value = 'Windows'
-        from tools.deploy_usb import detect_os
+        from tools.common.port_detection import detect_os
         
         result = detect_os()
         
@@ -60,7 +60,7 @@ class TestDetectOS:
     def test_detect_os_unknown(self, mock_system):
         """Test que detect_os() retorna 'unknown' para sistemas no soportados"""
         mock_system.return_value = 'FreeBSD'
-        from tools.deploy_usb import detect_os
+        from tools.common.port_detection import detect_os
         
         result = detect_os()
         
@@ -70,7 +70,7 @@ class TestDetectOS:
 class TestFindSerialPorts:
     """Tests para la función find_serial_ports()"""
     
-    @patch('tools.deploy_usb.detect_os')
+    @patch('tools.common.port_detection.detect_os')
     @patch('glob.glob')
     def test_find_serial_ports_macos(self, mock_glob, mock_detect_os):
         """Test que find_serial_ports() encuentra puertos en macOS"""
@@ -81,7 +81,7 @@ class TestFindSerialPorts:
             ['/dev/cu.usbserial-123'],
             ['/dev/cu.wchusbserial456']
         ]
-        from tools.deploy_usb import find_serial_ports
+        from tools.common.port_detection import find_serial_ports
         
         result = find_serial_ports()
         
@@ -89,7 +89,7 @@ class TestFindSerialPorts:
         assert '/dev/tty.usbserial-123' in result
         assert '/dev/tty.wchusbserial456' in result
     
-    @patch('tools.deploy_usb.detect_os')
+    @patch('tools.common.port_detection.detect_os')
     @patch('glob.glob')
     def test_find_serial_ports_linux(self, mock_glob, mock_detect_os):
         """Test que find_serial_ports() encuentra puertos en Linux"""
@@ -98,7 +98,7 @@ class TestFindSerialPorts:
             ['/dev/ttyUSB0', '/dev/ttyUSB1'],
             ['/dev/ttyACM0']
         ]
-        from tools.deploy_usb import find_serial_ports
+        from tools.common.port_detection import find_serial_ports
         
         result = find_serial_ports()
         
@@ -106,7 +106,7 @@ class TestFindSerialPorts:
         assert '/dev/ttyUSB1' in result
         assert '/dev/ttyACM0' in result
     
-    @patch('tools.deploy_usb.detect_os')
+    @patch('tools.common.port_detection.detect_os')
     @patch('serial.tools.list_ports.comports')
     def test_find_serial_ports_windows(self, mock_comports, mock_detect_os):
         """Test que find_serial_ports() encuentra puertos en Windows"""
@@ -116,14 +116,14 @@ class TestFindSerialPorts:
         mock_port2 = Mock()
         mock_port2.device = 'COM4'
         mock_comports.return_value = [mock_port1, mock_port2]
-        from tools.deploy_usb import find_serial_ports
+        from tools.common.port_detection import find_serial_ports
         
         result = find_serial_ports()
         
         assert 'COM3' in result
         assert 'COM4' in result
     
-    @patch('tools.deploy_usb.detect_os')
+    @patch('tools.common.port_detection.detect_os')
     @patch('serial.tools.list_ports.comports')
     @patch('subprocess.check_call')
     def test_find_serial_ports_windows_installs_pyserial(
@@ -136,14 +136,14 @@ class TestFindSerialPorts:
             ImportError("No module named 'serial'"),
             [Mock(device='COM3')]
         ]
-        from tools.deploy_usb import find_serial_ports
+        from tools.common.port_detection import find_serial_ports
         
         result = find_serial_ports()
         
         mock_check_call.assert_called_once()
         assert 'COM3' in result
     
-    @patch('tools.deploy_usb.detect_os')
+    @patch('tools.common.port_detection.detect_os')
     @patch('glob.glob')
     def test_find_serial_ports_removes_duplicates(self, mock_glob, mock_detect_os):
         """Test que find_serial_ports() elimina duplicados"""
@@ -154,17 +154,17 @@ class TestFindSerialPorts:
             [],
             []
         ]
-        from tools.deploy_usb import find_serial_ports
+        from tools.common.port_detection import find_serial_ports
         
         result = find_serial_ports()
         
         assert result.count('/dev/tty.usbserial-123') == 1
     
-    @patch('tools.deploy_usb.detect_os')
+    @patch('tools.common.port_detection.detect_os')
     def test_find_serial_ports_unknown_os(self, mock_detect_os):
         """Test que find_serial_ports() retorna lista vacía para OS desconocido"""
         mock_detect_os.return_value = 'unknown'
-        from tools.deploy_usb import find_serial_ports
+        from tools.common.port_detection import find_serial_ports
         
         result = find_serial_ports()
         
@@ -193,9 +193,9 @@ class TestCheckAmpyInstalled:
             # Necesitamos recargar el módulo para que use el mock
             import sys
             import importlib
-            if 'tools.deploy_usb' in sys.modules:
-                del sys.modules['tools.deploy_usb']
-            from tools.deploy_usb import check_ampy_installed
+            if 'tools.common.ampy_utils' in sys.modules:
+                del sys.modules['tools.common.ampy_utils']
+            from tools.common.ampy_utils import check_ampy_installed
             result = check_ampy_installed()
             assert result is True
     
@@ -215,9 +215,9 @@ class TestCheckAmpyInstalled:
             # Necesitamos recargar el módulo para que use el mock
             import sys
             import importlib
-            if 'tools.deploy_usb' in sys.modules:
-                del sys.modules['tools.deploy_usb']
-            from tools.deploy_usb import check_ampy_installed
+            if 'tools.common.ampy_utils' in sys.modules:
+                del sys.modules['tools.common.ampy_utils']
+            from tools.common.ampy_utils import check_ampy_installed
             result = check_ampy_installed()
             assert result is False
 
@@ -229,7 +229,7 @@ class TestInstallAmpy:
     def test_install_ampy_success(self, mock_check_call, capsys):
         """Test que install_ampy() instala ampy correctamente"""
         mock_check_call.return_value = None
-        from tools.deploy_usb import install_ampy
+        from tools.common.ampy_utils import install_ampy
         
         result = install_ampy()
         captured = capsys.readouterr()
@@ -246,7 +246,7 @@ class TestInstallAmpy:
     def test_install_ampy_failure(self, mock_check_call, capsys):
         """Test que install_ampy() maneja errores de instalación"""
         mock_check_call.side_effect = subprocess.CalledProcessError(1, 'pip')
-        from tools.deploy_usb import install_ampy
+        from tools.common.ampy_utils import install_ampy
         
         result = install_ampy()
         captured = capsys.readouterr()
@@ -439,10 +439,11 @@ class TestUploadFiles:
 class TestOpenSerialMonitor:
     """Tests para la función open_serial_monitor()"""
     
-    @patch('subprocess.run')
-    def test_open_serial_monitor_success(self, mock_run, capsys):
+    @patch('tools.deploy_usb.SerialMonitor')
+    def test_open_serial_monitor_success(self, mock_serial_monitor, capsys):
         """Test que open_serial_monitor() abre el monitor serie"""
-        mock_run.return_value = None
+        mock_monitor_instance = MagicMock()
+        mock_serial_monitor.return_value = mock_monitor_instance
         
         from tools.deploy_usb import open_serial_monitor
         
@@ -450,15 +451,15 @@ class TestOpenSerialMonitor:
         captured = capsys.readouterr()
         
         assert "monitor serie" in captured.out.lower()
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
-        assert 'miniterm' in call_args[1] or 'serial.tools.miniterm' in str(call_args)
-        assert '115200' in call_args
+        mock_serial_monitor.assert_called_once_with(port='/dev/ttyUSB0', baudrate=115200, max_reconnect_attempts=5)
+        mock_monitor_instance.start.assert_called_once()
     
-    @patch('subprocess.run')
-    def test_open_serial_monitor_keyboard_interrupt(self, mock_run, capsys):
+    @patch('tools.deploy_usb.SerialMonitor')
+    def test_open_serial_monitor_keyboard_interrupt(self, mock_serial_monitor, capsys):
         """Test que open_serial_monitor() maneja KeyboardInterrupt"""
-        mock_run.side_effect = KeyboardInterrupt()
+        mock_monitor_instance = MagicMock()
+        mock_monitor_instance.start.side_effect = KeyboardInterrupt()
+        mock_serial_monitor.return_value = mock_monitor_instance
         
         from tools.deploy_usb import open_serial_monitor
         
@@ -467,10 +468,10 @@ class TestOpenSerialMonitor:
         
         assert "Monitor serie cerrado" in captured.out
     
-    @patch('subprocess.run')
-    def test_open_serial_monitor_exception(self, mock_run, capsys):
+    @patch('tools.deploy_usb.SerialMonitor')
+    def test_open_serial_monitor_exception(self, mock_serial_monitor, capsys):
         """Test que open_serial_monitor() maneja excepciones"""
-        mock_run.side_effect = Exception("Error de conexión")
+        mock_serial_monitor.side_effect = Exception("Error de conexión")
         
         from tools.deploy_usb import open_serial_monitor
         
@@ -486,6 +487,7 @@ class TestMain:
     @patch('tools.deploy_usb.open_serial_monitor')
     @patch('tools.deploy_usb.upload_files')
     @patch('tools.deploy_usb.find_project_root')
+    @patch('tools.deploy_usb.check_port_permissions')
     @patch('tools.deploy_usb.find_serial_ports')
     @patch('tools.deploy_usb.check_ampy_installed')
     @patch('tools.deploy_usb.print_banner')
@@ -498,6 +500,7 @@ class TestMain:
         mock_banner,
         mock_check_ampy,
         mock_find_ports,
+        mock_check_permissions,
         mock_find_root,
         mock_upload,
         mock_monitor,
@@ -506,6 +509,7 @@ class TestMain:
         """Test que main() funciona correctamente con un solo puerto"""
         mock_check_ampy.return_value = True
         mock_find_ports.return_value = ['/dev/ttyUSB0']
+        mock_check_permissions.return_value = True
         mock_find_root.return_value = Path('/tmp/test_project')
         mock_upload.return_value = True
         mock_input.return_value = 'n'
@@ -526,6 +530,7 @@ class TestMain:
     @patch('tools.deploy_usb.open_serial_monitor')
     @patch('tools.deploy_usb.upload_files')
     @patch('tools.deploy_usb.find_project_root')
+    @patch('tools.deploy_usb.check_port_permissions')
     @patch('tools.deploy_usb.find_serial_ports')
     @patch('tools.deploy_usb.check_ampy_installed')
     @patch('tools.deploy_usb.install_ampy')
@@ -540,6 +545,7 @@ class TestMain:
         mock_install_ampy,
         mock_check_ampy,
         mock_find_ports,
+        mock_check_permissions,
         mock_find_root,
         mock_upload,
         mock_monitor
@@ -548,6 +554,7 @@ class TestMain:
         mock_check_ampy.return_value = False
         mock_install_ampy.return_value = True
         mock_find_ports.return_value = ['/dev/ttyUSB0']
+        mock_check_permissions.return_value = True
         mock_find_root.return_value = Path('/tmp/test_project')
         mock_upload.return_value = True
         mock_input.return_value = 'n'
@@ -628,6 +635,7 @@ class TestMain:
     @patch('tools.deploy_usb.open_serial_monitor')
     @patch('tools.deploy_usb.upload_files')
     @patch('tools.deploy_usb.find_project_root')
+    @patch('tools.deploy_usb.check_port_permissions')
     @patch('tools.deploy_usb.find_serial_ports')
     @patch('tools.deploy_usb.check_ampy_installed')
     @patch('tools.deploy_usb.print_banner')
@@ -640,6 +648,7 @@ class TestMain:
         mock_banner,
         mock_check_ampy,
         mock_find_ports,
+        mock_check_permissions,
         mock_find_root,
         mock_upload,
         mock_monitor,
@@ -648,6 +657,7 @@ class TestMain:
         """Test que main() permite seleccionar puerto cuando hay múltiples"""
         mock_check_ampy.return_value = True
         mock_find_ports.return_value = ['/dev/ttyUSB0', '/dev/ttyUSB1']
+        mock_check_permissions.return_value = True
         mock_find_root.return_value = Path('/tmp/test_project')
         mock_upload.return_value = True
         mock_input.return_value = '2'  # Seleccionar segundo puerto
@@ -662,6 +672,7 @@ class TestMain:
     @patch('tools.deploy_usb.open_serial_monitor')
     @patch('tools.deploy_usb.upload_files')
     @patch('tools.deploy_usb.find_project_root')
+    @patch('tools.deploy_usb.check_port_permissions')
     @patch('tools.deploy_usb.find_serial_ports')
     @patch('tools.deploy_usb.check_ampy_installed')
     @patch('tools.deploy_usb.print_banner')
@@ -674,6 +685,7 @@ class TestMain:
         mock_banner,
         mock_check_ampy,
         mock_find_ports,
+        mock_check_permissions,
         mock_find_root,
         mock_upload,
         mock_monitor
@@ -681,6 +693,7 @@ class TestMain:
         """Test que main() abre el monitor serie cuando el usuario responde 's'"""
         mock_check_ampy.return_value = True
         mock_find_ports.return_value = ['/dev/ttyUSB0']
+        mock_check_permissions.return_value = True
         mock_find_root.return_value = Path('/tmp/test_project')
         mock_upload.return_value = True
         mock_input.return_value = 's'
@@ -693,6 +706,7 @@ class TestMain:
     
     @patch('tools.deploy_usb.upload_files')
     @patch('tools.deploy_usb.find_project_root')
+    @patch('tools.deploy_usb.check_port_permissions')
     @patch('tools.deploy_usb.find_serial_ports')
     @patch('tools.deploy_usb.check_ampy_installed')
     @patch('tools.deploy_usb.print_banner')
@@ -705,12 +719,14 @@ class TestMain:
         mock_banner,
         mock_check_ampy,
         mock_find_ports,
+        mock_check_permissions,
         mock_find_root,
         mock_upload
     ):
         """Test que main() sale si la subida de archivos falla"""
         mock_check_ampy.return_value = True
         mock_find_ports.return_value = ['/dev/ttyUSB0']
+        mock_check_permissions.return_value = True
         mock_find_root.return_value = Path('/tmp/test_project')
         mock_upload.return_value = False
         

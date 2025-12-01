@@ -22,12 +22,18 @@ sys.path.insert(0, str(project_dir / 'pc'))
 # Agregar tools/common al path para funciones compartidas
 sys.path.insert(0, str(script_dir / 'common'))
 
-from serial_monitor import SerialMonitor, find_port, GREEN, YELLOW, BLUE, RED, NC
+from serial_monitor import SerialMonitor
+from port_detection import find_serial_ports
 from ampy_utils import (
     run_ampy,
     ensure_directory_exists,
-    get_base_files_to_upload,
-    verify_app_directory
+    get_files_to_upload,
+    verify_app_directory,
+    check_ampy_installed,
+    install_ampy,
+    check_port_permissions,
+    auto_reset_esp8266,
+    GREEN, YELLOW, BLUE, RED, NC
 )
 
 
@@ -76,24 +82,6 @@ def escape_env_value(value):
         return value
 
 
-# Funciones wrapper con colores para compatibilidad
-def run_ampy_colored(cmd):
-    """Wrapper que agrega colores a los mensajes de run_ampy"""
-    result = run_ampy(cmd, verbose=False)
-    if not result:
-        # Los errores ya se muestran en run_ampy, pero podemos agregar formato si es necesario
-        pass
-    return result
-
-
-def ensure_directory_exists_colored(port, dir_name):
-    """Wrapper que agrega colores a los mensajes de ensure_directory_exists"""
-    result = ensure_directory_exists(port, dir_name, verbose=False)
-    if not result:
-        print(f"{YELLOW}   ⚠️  No se pudo crear/verificar directorio {dir_name}{NC}")
-    return result
-
-
 def verify_webrepl_config(port, password):
     """Verifica que webrepl_cfg.py se copió correctamente"""
     print(f"\n{BLUE}🔍 Verificando configuración...{NC}")
@@ -116,113 +104,13 @@ def verify_webrepl_config(port, password):
         return False
 
 
-def check_port_permissions(port):
-    """
-    Verifica que el usuario tiene permisos para acceder al puerto serie.
-
-    Args:
-        port: Ruta al dispositivo serie (ej: /dev/ttyUSB0)
-
-    Returns:
-        bool: True si tiene permisos, False en caso contrario
-    """
-    import stat
-
-    if not os.path.exists(port):
-        print(f"{RED}❌ Puerto {port} no existe{NC}")
-        print(f"   Verifica que el ESP8266 está conectado")
-        return False
-
-    # Verificar permisos de lectura/escritura
-    try:
-        # Intentar obtener información del archivo
-        st = os.stat(port)
-        mode = st.st_mode
-
-        # Verificar si tenemos permisos de lectura y escritura
-        if os.access(port, os.R_OK | os.W_OK):
-            return True
-
-        # No tenemos permisos
-        print(f"\n{RED}❌ ERROR DE PERMISOS: No tienes acceso al puerto {port}{NC}")
-        print(f"\n💡 Solución recomendada:")
-        print(f"   1. Agregar tu usuario al grupo 'dialout':")
-        print(f"      {YELLOW}sudo usermod -a -G dialout $USER{NC}")
-        print(f"   2. {YELLOW}Cerrar sesión y volver a entrar{NC} (o reiniciar)")
-        print(f"   3. Verificar: {YELLOW}groups | grep dialout{NC}")
-        print(f"\n   Alternativa rápida (temporal, NO recomendado):")
-        print(f"      {YELLOW}sudo chmod 666 {port}{NC}")
-        print(f"\n   Después de aplicar la solución, ejecuta este script nuevamente.\n")
-        return False
-
-    except PermissionError:
-        print(f"\n{RED}❌ ERROR: Sin permisos para acceder a {port}{NC}")
-        print(f"   Aplica las soluciones mostradas arriba")
-        return False
-    except Exception as e:
-        print(f"{YELLOW}⚠️  No se pudo verificar permisos de {port}: {e}{NC}")
-        # Continuamos porque puede que funcione de todas formas
-        return True
-
-
-def auto_reset_esp8266(port, method='soft'):
-    """
-    Resetea ESP8266 automáticamente vía puerto serie
-
-    Args:
-        port: Puerto serie (ej: /dev/ttyUSB0)
-        method: 'soft' (CTRL-D reboot) o 'hard' (DTR/RTS reset)
-
-    Returns:
-        bool: True si reset exitoso, False si falló
-    """
-    import serial
-    import time
-
-    try:
-        if method == 'soft':
-            # Soft reset via CTRL-D (MicroPython soft reboot)
-            print(f"{BLUE}🔄 Reseteando ESP8266 (soft reset - CTRL-D)...{NC}")
-            ser = serial.Serial(port, 115200, timeout=1)
-            time.sleep(0.1)
-            ser.write(b'\x04')  # CTRL-D = soft reboot
-            time.sleep(2)  # Esperar boot completo
-            ser.close()
-            print(f"{GREEN}✅ Reset automático exitoso{NC}")
-            return True
-
-        elif method == 'hard':
-            # Hard reset via DTR/RTS (hardware reset)
-            print(f"{BLUE}🔄 Reseteando ESP8266 (hard reset - DTR/RTS)...{NC}")
-            ser = serial.Serial(port, 115200)
-            ser.setDTR(False)  # DTR low = reset active
-            ser.setRTS(True)   # RTS high
-            time.sleep(0.1)
-            ser.setDTR(True)   # DTR high = reset release
-            ser.setRTS(False)  # RTS low
-            time.sleep(0.5)    # Esperar estabilización
-            ser.close()
-            print(f"{GREEN}✅ Reset automático exitoso{NC}")
-            return True
-        else:
-            print(f"{RED}❌ Método desconocido: {method}{NC}")
-            return False
-
-    except Exception as e:
-        print(f"{YELLOW}⚠️  Reset automático falló: {e}{NC}")
-        print(f"{YELLOW}   Reinicia manualmente (desconecta/reconecta USB){NC}")
-        return False
-
-
 def main():
     print(f"{BLUE}🔧 Setup inicial WebREPL para ESP8266{NC}\n")
 
     # Verificar/instalar ampy
-    try:
-        import ampy.cli
-    except ImportError:
-        print(f"{YELLOW}Instalando adafruit-ampy...{NC}")
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'adafruit-ampy', 'pyserial'])
+    if not check_ampy_installed():
+        if not install_ampy():
+            sys.exit(1)
 
     # Directorios del proyecto
     project_dir = Path(__file__).parent.parent
@@ -231,9 +119,30 @@ def main():
     env = load_env(project_dir)
 
     # Obtener puerto
-    port = env.get('SERIAL_PORT') or find_port()
+    port = env.get('SERIAL_PORT')
     if not port:
-        port = input(f"{YELLOW}Puerto serie: {NC}").strip()
+        ports = find_serial_ports()
+        if len(ports) == 1:
+            port = ports[0]
+            print(f"{GREEN}🔍 Puerto detectado automáticamente: {port}{NC}")
+        elif len(ports) > 1:
+            print(f"{BLUE}Puertos serie detectados:{NC}")
+            for i, p in enumerate(ports, 1):
+                print(f"  {i}. {p}")
+            try:
+                choice = input(f"\n{YELLOW}Elige el puerto a usar (1-{len(ports)}): {NC}").strip()
+                idx = int(choice) - 1
+                if 0 <= idx < len(ports):
+                    port = ports[idx]
+                else:
+                    print(f"{RED}❌ Selección inválida{NC}")
+                    sys.exit(1)
+            except (ValueError, KeyboardInterrupt, EOFError):
+                print(f"{RED}❌ Puerto requerido{NC}")
+                sys.exit(1)
+        else:
+            port = input(f"{YELLOW}Puerto serie: {NC}").strip()
+    
     if not port:
         print(f"{RED}❌ Puerto requerido{NC}")
         sys.exit(1)
@@ -283,7 +192,7 @@ def main():
         f.write(f"PASS = '{webrepl_pass}'\n")
         webrepl_cfg = f.name
     
-    if not run_ampy_colored(['--port', port, 'put', webrepl_cfg, 'webrepl_cfg.py']):
+    if not run_ampy(['--port', port, 'put', webrepl_cfg, 'webrepl_cfg.py']):
         os.unlink(webrepl_cfg)
         sys.exit(1)
     os.unlink(webrepl_cfg)
@@ -299,14 +208,14 @@ def main():
         print(f"{RED}❌ No se encontró {boot_path}{NC}")
         sys.exit(1)
     
-    if not run_ampy_colored(['--port', port, 'put', str(boot_path), 'boot.py']):
+    if not run_ampy(['--port', port, 'put', str(boot_path), 'boot.py']):
         sys.exit(1)
     print(f"{GREEN}✅ boot.py instalado{NC}")
     
     # 3. Copiar .env
     print(f"\n{BLUE}[4/5] Copiando .env al ESP8266...{NC}")
     if env_path.exists():
-        if run_ampy_colored(['--port', port, 'put', str(env_path), '.env']):
+        if run_ampy(['--port', port, 'put', str(env_path), '.env']):
             print(f"{GREEN}✅ .env copiado{NC}")
         else:
             print(f"{YELLOW}⚠️  No se pudo copiar .env{NC}")
@@ -319,7 +228,7 @@ def main():
     print(f"\n{BLUE}[5/5] Desplegando sistema completo...{NC}")
     print(f"   Módulos base + app blink (sistema mínimo funcional)")
 
-    base_files = get_base_files_to_upload(project_dir, include_app=True, app_name='blink')
+    base_files = get_files_to_upload(project_dir, app_name='blink', include_base=True)
 
     if not base_files:
         print(f"{RED}❌ No se encontraron archivos del sistema{NC}")
@@ -334,9 +243,10 @@ def main():
         # Handle directory creation
         if local_path is None and remote_name.startswith('mkdir:'):
             dir_name = remote_name.replace('mkdir:', '')
-            if ensure_directory_exists_colored(port, dir_name):
+            if ensure_directory_exists(port, dir_name, verbose=False):
                 print(f"   📁 {dir_name}/")
             else:
+                print(f"{YELLOW}   ⚠️  No se pudo crear/verificar directorio {dir_name}{NC}")
                 error_count += 1
             continue
 
@@ -345,7 +255,7 @@ def main():
             display_name = Path(local_path).name
             print(f"   📄 {remote_name}")
 
-            if run_ampy_colored(['--port', port, 'put', local_path, remote_name]):
+            if run_ampy(['--port', port, 'put', local_path, remote_name]):
                 success_count += 1
             else:
                 error_count += 1

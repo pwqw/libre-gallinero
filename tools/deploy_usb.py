@@ -16,23 +16,29 @@ Requiere:
 
 import sys
 import os
-import platform
 import subprocess
-import glob
 from pathlib import Path
 
 # Agregar tools/common al path
 script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 
-from common.env_updater import update_env_for_app, cleanup_temp_env
+# Agregar pc/ al path para importar serial_monitor
+project_dir = script_dir.parent
+sys.path.insert(0, str(project_dir / 'pc'))
 
-# Colores para terminal
-RED = '\033[0;31m'
-GREEN = '\033[0;32m'
-YELLOW = '\033[1;33m'
-BLUE = '\033[0;34m'
-NC = '\033[0m'
+from common.env_updater import update_env_for_app, cleanup_temp_env
+from common.port_detection import find_serial_ports, detect_os
+from common.ampy_utils import (
+    run_ampy,
+    ensure_directory_exists,
+    get_files_to_upload,
+    check_ampy_installed,
+    install_ampy,
+    check_port_permissions,
+    RED, GREEN, YELLOW, BLUE, NC
+)
+from serial_monitor import SerialMonitor
 
 
 def print_banner():
@@ -43,83 +49,6 @@ def print_banner():
     print("║      (Windows/Mac/Linux - USB Serial)  ║")
     print("╚════════════════════════════════════════╝")
     print()
-
-
-def detect_os():
-    """Detecta el sistema operativo"""
-    system = platform.system().lower()
-    if system == 'darwin':
-        return 'macos'
-    elif system == 'linux':
-        return 'linux'
-    elif system == 'windows':
-        return 'windows'
-    return 'unknown'
-
-
-def find_serial_ports():
-    """Encuentra puertos serie disponibles según el sistema operativo"""
-    os_type = detect_os()
-    ports = []
-    
-    if os_type == 'macos':
-        patterns = [
-            '/dev/tty.usbserial-*',
-            '/dev/tty.wchusbserial*',
-            '/dev/cu.usbserial-*',
-            '/dev/cu.wchusbserial*',
-        ]
-    elif os_type == 'linux':
-        patterns = [
-            '/dev/ttyUSB*',
-            '/dev/ttyACM*',
-        ]
-    elif os_type == 'windows':
-        try:
-            import serial.tools.list_ports
-            ports_list = serial.tools.list_ports.comports()
-            ports = [port.device for port in ports_list]
-            return ports
-        except ImportError:
-            print(f"{YELLOW}⚠️  pyserial no instalado. Instalando...{NC}")
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'pyserial'])
-            import serial.tools.list_ports
-            ports_list = serial.tools.list_ports.comports()
-            ports = [port.device for port in ports_list]
-            return ports
-    else:
-        print(f"{RED}⚠️  Sistema operativo no soportado: {os_type}{NC}")
-        return []
-    
-    # Buscar puertos usando glob
-    for pattern in patterns:
-        found = glob.glob(pattern)
-        ports.extend(found)
-    
-    # Eliminar duplicados y ordenar
-    ports = sorted(list(set(ports)))
-    return ports
-
-
-def check_ampy_installed():
-    """Verifica si ampy está instalado"""
-    try:
-        import ampy.cli
-        return True
-    except ImportError:
-        return False
-
-
-def install_ampy():
-    """Instala ampy si no está disponible"""
-    print(f"{YELLOW}⚠️  ampy no está instalado. Instalando...{NC}")
-    try:
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'adafruit-ampy', 'pyserial'])
-        print(f"{GREEN}✅ ampy instalado correctamente{NC}\n")
-        return True
-    except subprocess.CalledProcessError:
-        print(f"{RED}❌ Error al instalar ampy{NC}")
-        return False
 
 
 def find_project_root():
@@ -137,59 +66,6 @@ def find_project_root():
             return path
     
     return None
-
-
-def get_files_to_upload_usb(project_root, app_name=None):
-    """
-    Obtiene lista de archivos a subir desde src/.
-    Similar a deploy_wifi.py pero para USB/ampy.
-    
-    Args:
-        project_root: Directorio raíz del proyecto
-        app_name: Nombre de la app a incluir (blink, gallinero, heladera, etc.)
-    
-    Returns:
-        list: Lista de tuplas (local_path, remote_name) o (None, "mkdir:dirname") para directorios
-    """
-    src_dir = project_root / 'src'
-    files = []
-    
-    # Base modules
-    main_files = ['boot.py', 'main.py', 'config.py', 'wifi.py', 'ntp.py', 'app_loader.py']
-    for filename in main_files:
-        local_path = src_dir / filename
-        if local_path.exists():
-            files.append((str(local_path), filename))
-    
-    # App-specific files
-    if app_name:
-        app_dir_path = src_dir / app_name
-        if app_dir_path.exists() and app_dir_path.is_dir():
-            print(f"{BLUE}📦 Incluyendo archivos de la app: {app_name}{NC}")
-            
-            # Create app directory
-            files.append((None, f"mkdir:{app_name}"))
-            
-            # Upload __init__.py first
-            init_file = app_dir_path / '__init__.py'
-            if init_file.exists():
-                remote_name = f"{app_name}/__init__.py"
-                files.append((str(init_file), remote_name))
-            
-            # Upload other .py files
-            for py_file in app_dir_path.glob('*.py'):
-                if py_file.name != '__init__.py':
-                    remote_name = f"{app_name}/{py_file.name}"
-                    files.append((str(py_file), remote_name))
-    
-    # Templates if exist
-    templates_dir = src_dir / 'templates'
-    if templates_dir.exists():
-        files.append((None, "mkdir:templates"))
-        for html_file in templates_dir.glob('*.html'):
-            files.append((str(html_file), f"templates/{html_file.name}"))
-    
-    return files
 
 
 def upload_files(port, project_root, app_name=None):
@@ -210,7 +86,7 @@ def upload_files(port, project_root, app_name=None):
     print(f"{BLUE}📤 Subiendo archivos desde src/ a la placa ESP8266...{NC}\n")
     
     # Obtener lista de archivos a subir
-    files_to_upload = get_files_to_upload_usb(project_root, app_name=app_name)
+    files_to_upload = get_files_to_upload(project_root, app_name=app_name, include_base=True)
     
     if not files_to_upload:
         print(f"{RED}❌ No se encontraron archivos para subir{NC}")
@@ -227,34 +103,20 @@ def upload_files(port, project_root, app_name=None):
             # Handle directory creation
             if local_path is None and remote_name.startswith('mkdir:'):
                 dir_name = remote_name.replace('mkdir:', '')
-                try:
-                    subprocess.run(
-                        ['ampy', '--port', port, 'mkdir', dir_name],
-                        check=False,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-                except Exception:
-                    pass
+                if ensure_directory_exists(port, dir_name, verbose=False):
+                    print(f"   📁 {dir_name}/")
+                else:
+                    error_count += 1
                 continue
             
             # Upload file
             if local_path and Path(local_path).exists():
-                try:
-                    print(f"📄 Subiendo: {Path(local_path).name} → {remote_name}")
-                    result = subprocess.run(
-                        ['ampy', '--port', port, 'put', local_path, remote_name],
-                        capture_output=True,
-                        text=True
-                    )
-                    if result.returncode == 0:
-                        success_count += 1
-                    else:
-                        print(f"{RED}⚠️  Error al subir {remote_name}: {result.stderr}{NC}")
-                        error_count += 1
-                except Exception as e:
-                    print(f"{RED}⚠️  Error al subir {remote_name}: {e}{NC}")
+                print(f"📄 Subiendo: {Path(local_path).name} → {remote_name}")
+                if run_ampy(['--port', port, 'put', local_path, remote_name]):
+                    success_count += 1
+                else:
                     error_count += 1
+                    print(f"{RED}   ⚠️  Error al subir {remote_name}{NC}")
         
         print(f"\n{GREEN}✨ ¡Carga exitosa! ✅{NC}")
         print(f"   Exitosos: {success_count}")
@@ -265,15 +127,10 @@ def upload_files(port, project_root, app_name=None):
         print(f"\n{BLUE}📄 Actualizando .env en ESP8266...{NC}")
         try:
             temp_env = update_env_for_app(project_root, app_name)
-            result = subprocess.run(
-                ['ampy', '--port', port, 'put', str(temp_env), '.env'],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
+            if run_ampy(['--port', port, 'put', str(temp_env), '.env']):
                 print(f"{GREEN}   ✅ .env actualizado con APP={app_name}{NC}")
             else:
-                print(f"{RED}   ⚠️  Error al subir .env: {result.stderr}{NC}")
+                print(f"{RED}   ⚠️  Error al subir .env{NC}")
                 error_count += 1
         except Exception as e:
             print(f"{RED}   ⚠️  Error al subir .env: {e}{NC}")
@@ -293,16 +150,14 @@ def upload_files(port, project_root, app_name=None):
 
 
 def open_serial_monitor(port):
-    """Abre el monitor serie"""
+    """Abre el monitor serie usando SerialMonitor"""
     print(f"\n{GREEN}🔄 Recuerda resetear la plaquita !!{NC}")
     print(f"\n{BLUE}📊 Iniciando monitor serie (115200 baudios){NC}")
-    print(f"Para salir: presiona Ctrl-] o Ctrl+C\n")
+    print(f"Para salir: presiona Ctrl+C\n")
     
     try:
-        subprocess.run([
-            sys.executable, '-m', 'serial.tools.miniterm',
-            port, '115200'
-        ])
+        monitor = SerialMonitor(port=port, baudrate=115200, max_reconnect_attempts=5)
+        monitor.start()
     except KeyboardInterrupt:
         print(f"\n{YELLOW}Monitor serie cerrado{NC}")
     except Exception as e:
@@ -370,6 +225,10 @@ def main():
             except KeyboardInterrupt:
                 print(f"\n{YELLOW}Operación cancelada{NC}")
                 sys.exit(0)
+    
+    # Verificar permisos del puerto
+    if not check_port_permissions(selected_port):
+        sys.exit(1)
     
     # Cambiar al directorio del proyecto
     os.chdir(project_root)

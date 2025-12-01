@@ -7,7 +7,6 @@ Proporciona funcionalidad de conexión, reconexión automática y monitoreo.
 import sys
 import os
 import time
-import glob
 import subprocess
 
 # Ajustar path para imports locales
@@ -15,22 +14,32 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
 
+# Intentar importar port_detection desde tools/common (si está disponible)
+try:
+    # Agregar tools/common al path
+    project_dir = os.path.dirname(script_dir)
+    tools_common = os.path.join(project_dir, 'tools', 'common')
+    if tools_common not in sys.path:
+        sys.path.insert(0, tools_common)
+    from port_detection import find_port
+except ImportError:
+    # Fallback: implementación simple si port_detection no está disponible
+    import glob
+    def find_port():
+        """Detecta puerto serie automáticamente (fallback)"""
+        ports = []
+        for pattern in ['/dev/tty.usbserial-*', '/dev/tty.wchusbserial*', '/dev/ttyUSB*', '/dev/ttyACM*', '/dev/cu.*']:
+            ports.extend(glob.glob(pattern))
+        if sys.platform == 'win32':
+            try:
+                import serial.tools.list_ports
+                ports = [p.device for p in serial.tools.list_ports.comports()]
+            except:
+                pass
+        return sorted(set(ports))[0] if ports else None
+
 # Importar colores centralizados
 from colors import GREEN, YELLOW, BLUE, RED, NC
-
-
-def find_port():
-    """Detecta puerto serie automáticamente"""
-    ports = []
-    for pattern in ['/dev/tty.usbserial-*', '/dev/tty.wchusbserial*', '/dev/ttyUSB*', '/dev/ttyACM*', '/dev/cu.*']:
-        ports.extend(glob.glob(pattern))
-    if sys.platform == 'win32':
-        try:
-            import serial.tools.list_ports
-            ports = [p.device for p in serial.tools.list_ports.comports()]
-        except:
-            pass
-    return sorted(set(ports))[0] if ports else None
 
 
 def ensure_pyserial():
