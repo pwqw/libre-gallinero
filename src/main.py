@@ -52,9 +52,9 @@ def main():
     else:log(f"NTP sync OK")
     
     # Configurar intervalo de resync NTP
-    ntp_resync_interval=86400  # default 24 horas
+    ntp_resync_interval=14400  # default 4 horas
     try:
-        ntp_resync_str=cfg.get('NTP_RESYNC_INTERVAL_SECONDS','86400')
+        ntp_resync_str=cfg.get('NTP_RESYNC_INTERVAL_SECONDS','14400')
         ntp_resync_interval=int(ntp_resync_str)
     except:pass
     last_ntp_sync_time=ntp_timestamp if ntp_ok else 0

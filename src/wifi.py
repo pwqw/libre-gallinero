@@ -5,6 +5,7 @@ _cfg=None
 _wdt_callback=None
 _webrepl_active=False
 _webrepl_ip=None
+_was_connected_before=False
 def log(msg):
  logger.log('wifi',msg)
 
@@ -72,15 +73,33 @@ def _wdt_feed():
     if _wdt_callback:
         try:_wdt_callback()
         except:pass
+def _sync_ntp_on_reconnect():
+    """Actualiza NTP automáticamente al reconectar WiFi (fallback silencioso)"""
+    try:
+        import ntp
+        tz_offset=-3
+        if _cfg:
+            tz_str=_cfg.get('TIMEZONE','-3')
+            try:tz_offset=int(tz_str)
+            except:pass
+        log("🕐 NTP auto-sync...")
+        ntp_ok,ntp_timestamp=ntp.sync_ntp(tz_offset=tz_offset)
+        if ntp_ok:
+            log("✓ NTP auto-sync OK")
+        else:
+            log("⚠ NTP auto-sync falló (continuando)")
+    except Exception as e:
+        log(f"⚠ NTP auto-sync error: {e} (continuando)")
 
 def connect_wifi(cfg,wdt_callback=None):
-    global _cfg,_wdt_callback
+    global _cfg,_wdt_callback,_was_connected_before
     _cfg=cfg
     _wdt_callback=wdt_callback
     import network,time
     log("=== WiFi ===")
     wlan=_get_wlan()
-    if wlan.isconnected():
+    was_already_connected=wlan.isconnected()
+    if was_already_connected:
         ifconfig=wlan.ifconfig()
         ip=ifconfig[0]
         if ip and ip!='0.0.0.0':
@@ -91,6 +110,9 @@ def connect_wifi(cfg,wdt_callback=None):
                 ap=network.WLAN(network.AP_IF)
                 if ap.active():ap.active(False)
             except:pass
+            if _was_connected_before:
+                _sync_ntp_on_reconnect()
+            _was_connected_before=True
             return True
     ssid=cfg.get('WIFI_SSID','').strip()
     pw=cfg.get('WIFI_PASSWORD','').strip()
@@ -115,6 +137,9 @@ def connect_wifi(cfg,wdt_callback=None):
                 log(f"✓✓ SDK cache OK: {ip}")
                 _check_ip_range(ip)
                 _start_webrepl(ip)
+                if _was_connected_before:
+                    _sync_ntp_on_reconnect()
+                _was_connected_before=True
                 return True
     except:pass
     max_attempts=3
@@ -169,6 +194,9 @@ def connect_wifi(cfg,wdt_callback=None):
                 log(f"IP:{ip} GW:{ifconfig[2]}")
                 _check_ip_range(ip)
                 _start_webrepl(ip)
+                if _was_connected_before:
+                    _sync_ntp_on_reconnect()
+                _was_connected_before=True
                 return True
         status=wlan.status()
         status_name=status_map.get(status,f'?({status})')
@@ -188,7 +216,7 @@ def connect_wifi(cfg,wdt_callback=None):
 def monitor_wifi(check_interval=30):
     """Monitor WiFi con reinicio inteligente de WebREPL"""
     import time,network
-    global _webrepl_active, _webrepl_ip
+    global _webrepl_active, _webrepl_ip,_was_connected_before
     log(f"Monitor WiFi ({check_interval}s)")
     wlan=_get_wlan()
     last_ip=None
@@ -206,7 +234,11 @@ def monitor_wifi(check_interval=30):
                         force_restart = not was_connected or (last_ip is not None and last_ip != ip)
                         _start_webrepl(ip, force_restart=force_restart)
                         last_ip=ip
+                        # Si se reconectó después de estar desconectado, actualizar NTP
+                        if not was_connected and _was_connected_before:
+                            _sync_ntp_on_reconnect()
                         was_connected=True
+                        _was_connected_before=True
                     dc=0
                 else:
                     dc+=1
