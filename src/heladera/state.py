@@ -104,99 +104,63 @@ def update_ntp_timestamp(state, ts):
     state['last_ntp_timestamp'] = ts
 
 def recover_state_after_boot(state, has_ntp):
-    """
-    Recupera estado inteligente tras boot.
-
-    Args:
-        state: Estado cargado desde JSON
-        has_ntp: True si tenemos NTP válido
-
-    Returns:
-        tuple: (fridge_on, cycle_elapsed_seconds)
-    """
+    """Recupera estado tras boot usando misma lógica de ciclo"""
     import time
-
+    
     if not has_ntp:
-        # SIN NTP: usar lógica de tiempo relativo con ciclos aproximados
         current_timestamp = time.time()
         last_save = state['last_save_timestamp']
         
-        if last_save == 0:
-            # Primer boot sin NTP: arrancar conservador con 15 min ON
-            log("Sin NTP: primer boot, arrancando con 15 min ON (conservador)")
+        if last_save == 0 or current_timestamp - last_save > 7200:
+            log("Sin NTP: resetear ciclo")
             state['fridge_on'] = True
             state['cycle_elapsed_seconds'] = 0
             state['last_save_timestamp'] = current_timestamp
             return (True, 0)
         
         time_delta = current_timestamp - last_save
-        
-        # Validar coherencia temporal
         if time_delta < 0:
-            log(f"WARNING: reloj retrocedió {-time_delta}s")
-            state['fridge_on'] = True
-            state['cycle_elapsed_seconds'] = 0
+            log("WARNING: reloj retrocedió")
             return (True, 0)
         
-        # Corte largo (>2h): resetear ciclo
-        if time_delta > 7200:
-            log(f"Corte largo detectado ({time_delta/3600:.1f}h), reseteando")
-            state['fridge_on'] = True
-            state['cycle_elapsed_seconds'] = 0
-            state['last_save_timestamp'] = current_timestamp
-            return (True, 0)
-        
-        # Reconstruir estado esperado con ciclos de 30 min
-        CYCLE_DURATION = 30 * 60  # 30 minutos
+        # Calcular posición en ciclo de 40 min
         elapsed_total = state['cycle_elapsed_seconds'] + time_delta
+        pos = int(elapsed_total / 60) % 40
+        fridge_on = pos >= 25
         
-        # Calcular cuántos ciclos completos pasaron
-        full_cycles = int(elapsed_total / CYCLE_DURATION)
-        remainder = elapsed_total % CYCLE_DURATION
-        
-        # Determinar estado ON/OFF esperado
-        # Si full_cycles es par, estado no cambió
-        # Si es impar, estado se invirtió
-        fridge_on = state['fridge_on']
-        if full_cycles % 2 == 1:
-            fridge_on = not fridge_on
-        
-        log(f"Sin NTP: {time_delta}s pasaron, {full_cycles} ciclos completos")
-        log(f"Estado: {'ON' if fridge_on else 'OFF'}, {remainder}s en ciclo")
+        remainder = elapsed_total % (40 * 60)
+        log(f"Sin NTP: {'ON' if fridge_on else 'OFF'}, {remainder//60:.0f}m en ciclo")
         
         state['fridge_on'] = fridge_on
         state['cycle_elapsed_seconds'] = remainder
         state['last_save_timestamp'] = current_timestamp
-        
         return (fridge_on, remainder)
-
-    # CON NTP: usar hora del día para determinar estado
+    
+    # CON NTP
     try:
         tm = time.localtime()
-        hour = tm[3]
-        minute = tm[4]
+        h, m = tm[3], tm[4]
         
-        # Horario nocturno (00:00-07:00): siempre OFF
-        if hour >= 0 and hour < 7:
-            log(f"Horario nocturno ({hour:02d}:{minute:02d}): RELE OFF")
+        if h >= 0 and h < 7:
+            log(f"Nocturno ({h:02d}:{m:02d}): OFF")
             state['fridge_on'] = False
             state['cycle_elapsed_seconds'] = 0
             state['last_ntp_timestamp'] = time.time()
             state['last_save_timestamp'] = time.time()
             return (False, 0)
         
-        # Resto del día: últimos 30 min (30-59) = ON, primeros 30 min (0-29) = OFF
-        fridge_on = minute >= 30
-        log(f"Hora actual ({hour:02d}:{minute:02d}): RELE {'ON' if fridge_on else 'OFF'}")
+        # Misma lógica que app.py
+        total_minutes = h * 60 + m
+        pos = total_minutes % 40
+        fridge_on = pos >= 25
         
+        log(f"Hora ({h:02d}:{m:02d}): {'ON' if fridge_on else 'OFF'}")
         state['fridge_on'] = fridge_on
         state['cycle_elapsed_seconds'] = 0
         state['last_ntp_timestamp'] = time.time()
         state['last_save_timestamp'] = time.time()
-        
         return (fridge_on, 0)
     
     except Exception as e:
-        log(f"ERROR obteniendo hora: {e}, usando estado guardado")
-        # Fallback: usar estado guardado
+        log(f"ERROR: {e}, usando estado guardado")
         return (state.get('fridge_on', True), state.get('cycle_elapsed_seconds', 0))

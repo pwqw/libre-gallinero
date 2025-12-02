@@ -1,11 +1,8 @@
 # Heladera App - Control basado en hora real
 # Hardware "Active Low": LED pin 2, RELE pin 5
-# Con NTP: 0-29min OFF, 30-59min ON. 00:00-07:00 siempre OFF
-# Sin NTP: ciclos ~30min con drift
+# Ciclo: 25min OFF, 15min ON (40min total). 00:00-07:00 siempre OFF
 #
 # CRÍTICO para WebREPL: El loop debe ceder control frecuentemente.
-# time.sleep(0) después de operaciones pesadas (save_state, cambios de estado)
-# permite que WebREPL procese conexiones entrantes.
 import sys
 try:
     import machine
@@ -18,18 +15,40 @@ except ImportError:
 
 RELAY_PIN = 5
 LED_PIN = 2
-CYCLE_DURATION_NO_NTP = 30 * 60  # 30 minutos sin NTP
+CYCLE_DURATION = 40 * 60  # 40 minutos (25 OFF + 15 ON)
+CYCLE_OFF_DURATION = 25 * 60  # 25 minutos OFF
 NIGHT_START_HOUR = 0
 NIGHT_END_HOUR = 7
 
-def _should_fridge_be_on(tm, has_ntp):
-    if not has_ntp:
+def _get_cycle_position(tm, has_ntp, cycle_start_time):
+    """Retorna posición en ciclo (0-39 minutos). <25=OFF, >=25=ON"""
+    if has_ntp:
+        total_minutes = tm[3] * 60 + tm[4]
+        return total_minutes % 40
+    else:
+        if cycle_start_time is None:
+            return 0
+        elapsed = int((time.time() - cycle_start_time) / 60)
+        return elapsed % 40
+
+def _should_fridge_be_on(tm, has_ntp, cycle_start_time):
+    """Determina si la heladera debe estar ON basado en ciclo y hora"""
+    if not has_ntp and cycle_start_time is None:
         return None
     h = tm[3]
-    m = tm[4]
     if h >= NIGHT_START_HOUR and h < NIGHT_END_HOUR:
         return False
-    return m >= 30
+    pos = _get_cycle_position(tm, has_ntp, cycle_start_time)
+    return pos >= 25
+
+def _set_relay_state(relay, led, on):
+    """Unifica cambio de estado del relay/LED"""
+    if on:
+        relay.off()  # Active Low
+        led.on()
+    else:
+        relay.on()
+        led.off()
 
 def run(cfg):
     logger.log('heladera', '=== Heladera App ===')
@@ -43,21 +62,16 @@ def run(cfg):
                 logger.log('heladera', f'NTP: {tm[3]:02d}:{tm[4]:02d}:{tm[5]:02d}')
         except:
             pass
+        
         s = state.load_state()
         logger.log('heladera', f'Boot #{s["boot_count"]}')
-        if has_ntp:
-            fridge_on, _ = state.recover_state_after_boot(s, True)
-        else:
-            fridge_on, _ = state.recover_state_after_boot(s, False)
+        fridge_on, cycle_offset = state.recover_state_after_boot(s, has_ntp)
+        
         relay = machine.Pin(RELAY_PIN, machine.Pin.OUT)
         led = machine.Pin(LED_PIN, machine.Pin.OUT)
-        if fridge_on:
-            relay.off()
-            led.on()
-        else:
-            relay.on()
-            led.off()
-        cycle_start = time.time() if not has_ntp else None
+        _set_relay_state(relay, led, fridge_on)
+        
+        cycle_start = time.time() - cycle_offset if not has_ntp else None
         last_check = time.time()
         last_save = time.time()
         tick = 0
@@ -69,76 +83,49 @@ def run(cfg):
                 last_check = t
                 try:
                     tm = time.localtime()
-                    should_on = _should_fridge_be_on(tm, has_ntp)
-                    if has_ntp and should_on is not None:
-                        if should_on != fridge_on:
-                            fridge_on = should_on
-                            if fridge_on:
-                                relay.off()
-                                led.on()
-                                logger.log('heladera', f'ON {tm[3]:02d}:{tm[4]:02d}')
-                            else:
-                                relay.on()
-                                led.off()
-                                logger.log('heladera', f'OFF {tm[3]:02d}:{tm[4]:02d}')
-                            s['fridge_on'] = fridge_on
-                            s['cycle_elapsed_seconds'] = 0
-                            s['last_save_timestamp'] = t
-                            state.update_ntp_timestamp(s, t)
-                            # Ceder control después de cambio de estado (operación pesada)
-                            time.sleep(0)
-                    elif not has_ntp:
-                        if cycle_start is None:
+                    should_on = _should_fridge_be_on(tm, has_ntp, cycle_start)
+                    if should_on is not None and should_on != fridge_on:
+                        fridge_on = should_on
+                        _set_relay_state(relay, led, fridge_on)
+                        logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {tm[3]:02d}:{tm[4]:02d}')
+                        s['fridge_on'] = fridge_on
+                        s['last_save_timestamp'] = t
+                        state.update_ntp_timestamp(s, t)
+                        if not has_ntp:
                             cycle_start = t
-                        elapsed = t - cycle_start
-                        if elapsed >= CYCLE_DURATION_NO_NTP:
-                            fridge_on = not fridge_on
-                            cycle_start = t
-                            if fridge_on:
-                                relay.off()
-                                led.on()
-                                logger.log('heladera', 'ON (sin NTP)')
-                            else:
-                                relay.on()
-                                led.off()
-                                logger.log('heladera', 'OFF (sin NTP)')
-                            s['fridge_on'] = fridge_on
-                            s['cycle_elapsed_seconds'] = 0
-                            s['last_save_timestamp'] = t
-                            # Ceder control después de cambio de estado (operación pesada)
-                            time.sleep(0)
-                        else:
-                            s['cycle_elapsed_seconds'] = elapsed
+                        time.sleep(0)
                 except Exception as e:
                     logger.log('heladera', f'ERROR: {e}')
+            
             if t - last_save >= 60.0:
                 try:
-                    state.save_state(s)  # Operación bloqueante (escribe a flash)
+                    state.save_state(s)
                     last_save = t
-                    # CRÍTICO: Ceder control después de escribir a flash para que WebREPL funcione
                     time.sleep(0)
-                    gc.collect()  # Liberar memoria después de save
+                    gc.collect()
                 except:
                     pass
+            
             if tick % 1000 == 0:
                 try:
                     tm = time.localtime()
                     if has_ntp:
                         logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {tm[3]:02d}:{tm[4]:02d}')
                     else:
-                        e = t - cycle_start if cycle_start else 0
-                        r = CYCLE_DURATION_NO_NTP - e
-                        logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {r:.0f}s (sin NTP)')
+                        pos = _get_cycle_position(tm, False, cycle_start)
+                        if pos < 25:
+                            remaining_min = 25 - pos
+                        else:
+                            remaining_min = 40 - pos
+                        logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {remaining_min:.0f}m (sin NTP)')
                 except:
                     pass
-            # Ceder control en cada iteración para que WebREPL pueda procesar conexiones
             yield
             
     except KeyboardInterrupt:
         logger.log('heladera', 'Interrumpido')
         try:
-            relay.on()
-            led.off()
+            _set_relay_state(relay, led, False)
         except:
             pass
     except Exception as e:
