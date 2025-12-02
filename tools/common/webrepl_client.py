@@ -30,8 +30,8 @@ logger.setLevel(logging.INFO)
 
 # Límite de tamaño de archivo (ESP8266 tiene memoria limitada)
 # Según documentación MicroPython 1.19 ESP8266: archivos >16KB pueden causar problemas de memoria
-# Usamos 8KB como límite conservador para evitar problemas de memoria
-MAX_FILE_SIZE = 8 * 1024  # 8KB - límite conservador para ESP8266
+# Usamos 16KB como límite para el deploy WiFi
+MAX_FILE_SIZE = 16 * 1024  # 16KB - límite para deploy WiFi
 
 # Protocolo binario WebREPL (según webrepl_cli.py oficial)
 WEBREPL_REQ_S = "<2sBBQLH64s"  # Formato del request struct

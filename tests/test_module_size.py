@@ -3,9 +3,13 @@ from pathlib import Path
 
 
 def test_all_modules_under_8kb():
-    """Verifica que todos los módulos Python en src pesen menos de 8KB (límite de MAX_FILE_SIZE)."""
+    """Verifica que todos los módulos Python en src pesen menos de 8KB (test más estricto que deploy).
+    
+    Nota: El deploy WiFi permite hasta 16KB, pero este test es más estricto para mantener
+    los módulos pequeños. wifi.py tiene excepción de 12KB.
+    """
     src_dir = Path(__file__).parent.parent / "src"
-    max_size = 8 * 1024  # 8KB en bytes (consistente con MAX_FILE_SIZE en webrepl_client.py)
+    max_size = 8 * 1024  # 8KB en bytes (test más estricto que deploy WiFi que permite 16KB)
     wifi_max_size = 12 * 1024  # 12KB para wifi.py (excepción especial)
     
     failed_modules = []
