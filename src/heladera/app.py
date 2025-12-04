@@ -1,7 +1,7 @@
 # Heladera App - Control basado en hora real
 # Hardware "Active Low": LED pin 2, RELE pin 5
 # Ciclo: 18min OFF, 12min ON (30min total). 00:00-07:00 siempre OFF
-# Ciclo inicia a las 00:00 con NTP
+# Ciclo se reinicia cada hora (minutos 0-29 y 30-59) con NTP
 #
 # CRÍTICO para WebREPL: El loop debe ceder control frecuentemente.
 import sys
@@ -24,8 +24,7 @@ NIGHT_END_HOUR = 7
 def _get_cycle_position(tm, has_ntp, cycle_start_time):
     """Retorna posición en ciclo (0-29 minutos). <18=OFF, >=18=ON"""
     if has_ntp:
-        total_minutes = tm[3] * 60 + tm[4]
-        return total_minutes % 30
+        return tm[4] % 30
     else:
         if cycle_start_time is None:
             return 0

@@ -149,9 +149,8 @@ def recover_state_after_boot(state, has_ntp):
             state['last_save_timestamp'] = time.time()
             return (False, 0)
         
-        # Misma lógica que app.py (ciclo inicia a las 00:00)
-        total_minutes = h * 60 + m
-        pos = total_minutes % 30
+        # Misma lógica que app.py (ciclo reinicia cada hora)
+        pos = m % 30
         fridge_on = pos >= 18
         
         log(f"Hora ({h:02d}:{m:02d}): {'ON' if fridge_on else 'OFF'}")
