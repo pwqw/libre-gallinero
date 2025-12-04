@@ -112,7 +112,7 @@ def recover_state_after_boot(state, has_ntp):
         last_save = state['last_save_timestamp']
         
         if last_save == 0 or current_timestamp - last_save > 7200:
-            log("Sin NTP: resetear ciclo")
+            log("Sin NTP: resetear ciclo (12 min ON)")
             state['fridge_on'] = True
             state['cycle_elapsed_seconds'] = 0
             state['last_save_timestamp'] = current_timestamp
@@ -123,12 +123,12 @@ def recover_state_after_boot(state, has_ntp):
             log("WARNING: reloj retrocedió")
             return (True, 0)
         
-        # Calcular posición en ciclo de 40 min
+        # Calcular posición en ciclo de 30 min
         elapsed_total = state['cycle_elapsed_seconds'] + time_delta
-        pos = int(elapsed_total / 60) % 40
-        fridge_on = pos >= 25
+        pos = int(elapsed_total / 60) % 30
+        fridge_on = pos >= 18
         
-        remainder = elapsed_total % (40 * 60)
+        remainder = elapsed_total % (30 * 60)
         log(f"Sin NTP: {'ON' if fridge_on else 'OFF'}, {remainder//60:.0f}m en ciclo")
         
         state['fridge_on'] = fridge_on
@@ -149,10 +149,10 @@ def recover_state_after_boot(state, has_ntp):
             state['last_save_timestamp'] = time.time()
             return (False, 0)
         
-        # Misma lógica que app.py
+        # Misma lógica que app.py (ciclo inicia a las 00:00)
         total_minutes = h * 60 + m
-        pos = total_minutes % 40
-        fridge_on = pos >= 25
+        pos = total_minutes % 30
+        fridge_on = pos >= 18
         
         log(f"Hora ({h:02d}:{m:02d}): {'ON' if fridge_on else 'OFF'}")
         state['fridge_on'] = fridge_on
