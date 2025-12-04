@@ -12,7 +12,7 @@ DEFAULT_CONFIG = {
     'LONGITUDE': '-64.1833',
     'TIMEZONE': '-3',
     'APP': 'blink',
-    'NTP_RESYNC_INTERVAL_SECONDS': '14400',  # 4 horas
+    'NTP_RESYNC_INTERVAL_SECONDS': '3600',  # 1 hora
     'MAX_TIME_DRIFT_SECONDS': '300'  # 5 minutos
 }
 
