@@ -11,16 +11,19 @@ try:
     import gc
     import logger
     from heladera import state
+    # Night hours constants imported from state.py to ensure consistency
+    from heladera.state import NIGHT_START_HOUR, NIGHT_START_MINUTE, NIGHT_END_HOUR
 except ImportError:
     print("[heladera/app] ERROR: Módulos MicroPython no encontrados")
+    # Fallback values if import fails (should not happen in normal operation)
+    NIGHT_START_HOUR = 1
+    NIGHT_START_MINUTE = 30
+    NIGHT_END_HOUR = 7
 
 RELAY_PIN = 5
 LED_PIN = 2
 CYCLE_DURATION = 30 * 60  # 30 minutos (18 OFF + 12 ON)
 CYCLE_OFF_DURATION = 18 * 60  # 18 minutos OFF
-NIGHT_START_HOUR = 1
-NIGHT_START_MINUTE = 30
-NIGHT_END_HOUR = 7
 
 def _get_cycle_position(tm, has_ntp, cycle_start_time):
     """Retorna posición en ciclo (0-29 minutos). <18=OFF, >=18=ON"""

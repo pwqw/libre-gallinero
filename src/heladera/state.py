@@ -12,6 +12,11 @@ except ImportError:
 STATE_FILE = '/state.json'
 STATE_FILE_TMP = '/state.json.tmp'
 
+# Night hours boundary constants (shared with app.py)
+NIGHT_START_HOUR = 1
+NIGHT_START_MINUTE = 30
+NIGHT_END_HOUR = 7
+
 def log(msg):
     """Log with module prefix"""
     print(f'[heladera/state] {msg}')
@@ -141,7 +146,7 @@ def recover_state_after_boot(state, has_ntp):
         tm = time.localtime()
         h, m = tm[3], tm[4]
         
-        if (h == 1 and m >= 30) or (h > 1 and h < 7):
+        if (h == NIGHT_START_HOUR and m >= NIGHT_START_MINUTE) or (h > NIGHT_START_HOUR and h < NIGHT_END_HOUR):
             log(f"Nocturno ({h:02d}:{m:02d}): OFF")
             state['fridge_on'] = False
             state['cycle_elapsed_seconds'] = 0
