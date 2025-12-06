@@ -221,24 +221,36 @@ class TestRecoverStateAfterBoot:
 
         mock_time = sys.modules['time']
         
-        # Test 00:00 - debe estar OFF
+        # Test 00:00 - debe estar OFF (posición 0 < 18, no es horario nocturno)
         mock_time.time = Mock(return_value=1000)
         mock_time.localtime = Mock(return_value=(2024, 1, 1, 0, 0, 0, 0, 1))
         test_state = state.get_default_state()
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
-        assert fridge_on is False, "00:00 debe estar OFF"
+        assert fridge_on is False, "00:00 debe estar OFF (posición 0 < 18)"
         
-        # Test 03:30 - debe estar OFF (aunque minuto >= 30)
+        # Test 01:29 - debe estar ON (aún no es horario nocturno, posición 29 >= 18)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 1, 29, 0, 0, 1))
+        test_state = state.get_default_state()
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
+        assert fridge_on is True, "01:29 debe estar ON (no es horario nocturno)"
+        
+        # Test 01:30 - debe estar OFF (inicio horario nocturno)
+        mock_time.localtime = Mock(return_value=(2024, 1, 1, 1, 30, 0, 0, 1))
+        test_state = state.get_default_state()
+        fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
+        assert fridge_on is False, "01:30 debe estar OFF (horario nocturno)"
+        
+        # Test 03:30 - debe estar OFF (horario nocturno)
         mock_time.localtime = Mock(return_value=(2024, 1, 1, 3, 30, 0, 0, 1))
         test_state = state.get_default_state()
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
         assert fridge_on is False, "03:30 debe estar OFF (horario nocturno)"
         
-        # Test 06:59 - debe estar OFF
+        # Test 06:59 - debe estar OFF (horario nocturno)
         mock_time.localtime = Mock(return_value=(2024, 1, 1, 6, 59, 0, 0, 1))
         test_state = state.get_default_state()
         fridge_on, elapsed = state.recover_state_after_boot(test_state, has_ntp=True)
-        assert fridge_on is False, "06:59 debe estar OFF"
+        assert fridge_on is False, "06:59 debe estar OFF (horario nocturno)"
         
         # Test 07:00 - debe seguir lógica normal (posición 0 < 18 = OFF)
         mock_time.localtime = Mock(return_value=(2024, 1, 1, 7, 0, 0, 0, 1))

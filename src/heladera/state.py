@@ -141,7 +141,7 @@ def recover_state_after_boot(state, has_ntp):
         tm = time.localtime()
         h, m = tm[3], tm[4]
         
-        if h >= 0 and h < 7:
+        if (h == 1 and m >= 30) or (h > 1 and h < 7):
             log(f"Nocturno ({h:02d}:{m:02d}): OFF")
             state['fridge_on'] = False
             state['cycle_elapsed_seconds'] = 0

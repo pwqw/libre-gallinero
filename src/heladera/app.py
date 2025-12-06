@@ -1,6 +1,6 @@
 # Heladera App - Control basado en hora real
 # Hardware "Active Low": LED pin 2, RELE pin 5
-# Ciclo: 18min OFF, 12min ON (30min total). 00:00-07:00 siempre OFF
+# Ciclo: 18min OFF, 12min ON (30min total). 01:30-07:00 siempre OFF
 # Ciclo se reinicia cada hora (minutos 0-29 y 30-59) con NTP
 #
 # CRÍTICO para WebREPL: El loop debe ceder control frecuentemente.
@@ -18,7 +18,8 @@ RELAY_PIN = 5
 LED_PIN = 2
 CYCLE_DURATION = 30 * 60  # 30 minutos (18 OFF + 12 ON)
 CYCLE_OFF_DURATION = 18 * 60  # 18 minutos OFF
-NIGHT_START_HOUR = 0
+NIGHT_START_HOUR = 1
+NIGHT_START_MINUTE = 30
 NIGHT_END_HOUR = 7
 
 def _get_cycle_position(tm, has_ntp, cycle_start_time):
@@ -35,8 +36,10 @@ def _should_fridge_be_on(tm, has_ntp, cycle_start_time):
     """Determina si la heladera debe estar ON basado en ciclo y hora"""
     if not has_ntp and cycle_start_time is None:
         return None
-    if has_ntp and tm[3] >= NIGHT_START_HOUR and tm[3] < NIGHT_END_HOUR:
-        return False
+    if has_ntp:
+        h, m = tm[3], tm[4]
+        if (h == NIGHT_START_HOUR and m >= NIGHT_START_MINUTE) or (h > NIGHT_START_HOUR and h < NIGHT_END_HOUR):
+            return False
     pos = _get_cycle_position(tm, has_ntp, cycle_start_time)
     return pos >= 18
 
