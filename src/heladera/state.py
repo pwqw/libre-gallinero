@@ -105,8 +105,11 @@ def save_state(state):
         return False
 
 def update_ntp_timestamp(state, ts):
-    # Actualiza last_ntp_timestamp con timestamp actual
+    # Actualiza last_ntp_timestamp y last_save_timestamp juntos
+    # CRÍTICO: Ambos deben actualizarse simultáneamente para mantener
+    # la invariante requerida por la lógica de detección de drift en ntp.py
     state['last_ntp_timestamp'] = ts
+    state['last_save_timestamp'] = ts
 
 def recover_state_after_boot(state, has_ntp):
     """Recupera estado tras boot usando misma lógica de ciclo"""
@@ -150,8 +153,7 @@ def recover_state_after_boot(state, has_ntp):
             log(f"Nocturno ({h:02d}:{m:02d}): OFF")
             state['fridge_on'] = False
             state['cycle_elapsed_seconds'] = 0
-            state['last_ntp_timestamp'] = time.time()
-            state['last_save_timestamp'] = time.time()
+            update_ntp_timestamp(state, time.time())
             return (False, 0)
         
         # Misma lógica que app.py (ciclo reinicia cada hora)
@@ -161,8 +163,7 @@ def recover_state_after_boot(state, has_ntp):
         log(f"Hora ({h:02d}:{m:02d}): {'ON' if fridge_on else 'OFF'}")
         state['fridge_on'] = fridge_on
         state['cycle_elapsed_seconds'] = 0
-        state['last_ntp_timestamp'] = time.time()
-        state['last_save_timestamp'] = time.time()
+        update_ntp_timestamp(state, time.time())
         return (fridge_on, 0)
     
     except Exception as e:

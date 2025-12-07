@@ -23,8 +23,6 @@ except ImportError:
 
 RELAY_PIN = 5
 LED_PIN = 2
-CYCLE_DURATION = 30 * 60  # 30 minutos (18 OFF + 12 ON)
-CYCLE_OFF_DURATION = 18 * 60  # 18 minutos OFF
 
 def _get_cycle_position(tm, has_ntp, cycle_start_time):
     """Retorna posición en ciclo (0-29 minutos). <18=OFF, >=18=ON"""
@@ -117,7 +115,6 @@ def run(cfg):
                         _set_relay_state(relay, led, fridge_on)
                         logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {tm[3]:02d}:{tm[4]:02d}')
                         s['fridge_on'] = fridge_on
-                        state.update_ntp_timestamp(s, t)
                         if not has_ntp:
                             cycle_start = t
                         time.sleep(0)
@@ -126,9 +123,13 @@ def run(cfg):
             
             if t - last_save >= 60.0:
                 try:
-                    if state.save_state(s):
-                        # Actualizar timestamp solo después de guardar exitosamente
-                        s['last_save_timestamp'] = t
+                    # NO actualizar last_save_timestamp aquí: update_ntp_timestamp()
+                    # ya mantiene ambos timestamps sincronizados. Sobrescribirlo aquí
+                    # rompería la invariante requerida por la detección de drift en ntp.py.
+                    # La lógica de drift calcula: expected_time = last_ntp_timestamp + 
+                    # (current_time - last_save_timestamp), por lo que ambos deben
+                    # establecerse simultáneamente cuando se actualiza NTP.
+                    state.save_state(s)
                     last_save = t
                     time.sleep(0)
                     gc.collect()
