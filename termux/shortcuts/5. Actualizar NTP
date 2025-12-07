@@ -1,0 +1,21 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# -*- coding: utf-8 -*-
+# Shortcut para actualizar sincronización NTP del ESP8266
+
+set -e
+set -u
+
+cd "$HOME/libre-gallinero"
+
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+print_banner "ACTUALIZAR NTP ESP8266"
+
+# Ejecutar script de actualización NTP
+# El script hace: conectar → ejecutar ntp.sync_ntp() → mostrar resultado
+if python3 tools/update_ntp.py heladera; then
+    pause
+else
+    pause_error "Actualización NTP falló"
+fi
