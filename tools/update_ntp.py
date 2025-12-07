@@ -51,7 +51,7 @@ def main():
     
     # Verificar que existe WEBREPL_IP en .env
     webrepl_ip = config.get('WEBREPL_IP', '').strip()
-    if not webrepl_ip or webrepl_ip == '192.168.4.1':
+    if not webrepl_ip:
         print(f"{RED}❌ No hay IP configurada en .env (WEBREPL_IP){NC}")
         print(f"{YELLOW}💡 Ejecuta primero el scanner para encontrar el ESP8266:{NC}")
         print(f"   python3 tools/find_esp8266.py{NC}\n")
