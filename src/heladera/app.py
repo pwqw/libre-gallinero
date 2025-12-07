@@ -91,6 +91,12 @@ def run(cfg):
             if t - last_ntp_check >= 300.0:
                 last_ntp_check = t
                 new_has_ntp, drift_detected = ntp.check_ntp_status(cfg, s, 'heladera')
+                
+                # Actualizar timestamps si NTP válido y sin drift (nueva línea base)
+                if new_has_ntp and not drift_detected:
+                    state.update_ntp_timestamp(s, t)
+                    s['last_save_timestamp'] = t
+                
                 if new_has_ntp != has_ntp or drift_detected:
                     old_has_ntp = has_ntp
                     has_ntp = new_has_ntp and not drift_detected
