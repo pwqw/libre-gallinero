@@ -5,13 +5,16 @@ update_ntp.py - Actualiza la sincronización NTP del ESP8266 vía WebREPL
 Uso:
     python3 tools/update_ntp.py              # Usa IP del .env
     python3 tools/update_ntp.py 192.168.1.50  # IP específica
-    python3 tools/update_ntp.py heladera      # App específica (opcional)
 
 Funcionamiento:
     1. Se conecta al ESP8266 vía WebREPL
-    2. Carga configuración TIMEZONE desde .env
-    3. Ejecuta ntp.sync_ntp(tz_offset) en el ESP8266
-    4. Muestra el resultado de la sincronización
+    2. Obtiene y muestra la hora actual (si está disponible)
+    3. Muestra logs históricos
+    4. Carga configuración TIMEZONE desde .env
+    5. Ejecuta ntp.sync_ntp(tz_offset) en el ESP8266
+    6. Muestra el resultado de la sincronización
+    7. Obtiene y muestra la hora actualizada
+    8. Muestra logs actualizados
 """
 
 import sys
@@ -36,17 +39,22 @@ def main():
     print(f"{CYAN}🕐 Actualizar NTP{NC}")
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
-    # Parsear argumentos
-    app_name = None
+    # Parsear argumentos - solo acepta IP (opcional)
     ip_arg = None
-
-    for arg in sys.argv[1:]:
+    
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        # Validar que sea una IP (contiene punto y dígitos)
         if '.' in arg and any(c.isdigit() for c in arg):
             ip_arg = arg
             print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
         else:
-            app_name = arg
-            print(f"{BLUE}📦 App: {app_name}{NC}\n")
+            print(f"{RED}❌ Error: Argumento inválido '{arg}'. Solo se acepta una IP (ej: 192.168.1.50){NC}")
+            print(f"{YELLOW}💡 Uso: python3 tools/update_ntp.py [IP]{NC}\n")
+            sys.exit(1)
+    
+    if len(sys.argv) > 2:
+        print(f"{YELLOW}⚠️  Advertencia: Se ignoran argumentos adicionales{NC}\n")
 
     # Detectar directorio del proyecto
     project_dir = script_dir.parent
@@ -74,10 +82,106 @@ def main():
         print(f"{RED}❌ No se pudo conectar al ESP8266{NC}")
         sys.exit(1)
 
-    print(f"\n{GREEN}✅ Conectado al ESP8266{NC}")
-    print(f"{YELLOW}🕐 Sincronizando NTP...{NC}\n")
+    print(f"\n{GREEN}✅ Conectado al ESP8266{NC}\n")
 
     try:
+        # Obtener hora actual antes de sincronizar (si está disponible)
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{BLUE}🕐 Hora actual (antes de sincronizar){NC}")
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+        
+        try:
+            get_time_code = """import time
+tm = time.localtime()
+if tm[0] > 2000:
+    print("Hora local: {:02d}:{:02d}:{:02d} {:02d}/{:02d}/{}".format(tm[3], tm[4], tm[5], tm[2], tm[1], tm[0]))
+    print("Timestamp: {}".format(time.time()))
+else:
+    print("⚠️  Hora no sincronizada (año < 2000)")
+"""
+            client.ws.send('\x05')
+            time.sleep(0.3)
+            client.ws.send(get_time_code)
+            time.sleep(0.3)
+            client.ws.send('\x04')
+            time.sleep(1.0)
+            
+            time_response = ""
+            try:
+                for _ in range(5):
+                    client.ws.settimeout(1.0)
+                    data = client.ws.recv()
+                    if isinstance(data, bytes):
+                        time_response += data.decode('utf-8', errors='ignore')
+                    else:
+                        time_response += data
+                    if ">>>" in time_response:
+                        break
+            except:
+                pass
+            
+            if time_response:
+                lines = time_response.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('>>>') and not line.startswith('...'):
+                        if '⚠️' in line:
+                            print(f"{YELLOW}{line}{NC}")
+                        else:
+                            print(f"{CYAN}{line}{NC}")
+        except Exception as e:
+            print(f"{YELLOW}⚠️  No se pudo obtener hora actual: {e}{NC}")
+        
+        print()
+        
+        # Mostrar logs históricos
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{BLUE}📜 Logs históricos{NC}")
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+        
+        try:
+            # Limpiar buffer primero
+            client.ws.settimeout(0.2)
+            try:
+                while True:
+                    client.ws.recv()
+            except:
+                pass
+            
+            # Obtener buffer histórico
+            client.ws.settimeout(5.0)
+            client.ws.send("import logger\r\n")
+            time.sleep(0.3)
+            client.ws.send("print(logger.get())\r\n")
+            time.sleep(1.0)
+            
+            history_output = ""
+            try:
+                for _ in range(10):
+                    data = client.ws.recv()
+                    if isinstance(data, bytes):
+                        history_output += data.decode('utf-8', errors='replace')
+                    else:
+                        history_output += data
+            except:
+                pass
+            
+            if history_output:
+                # Filtrar prompts
+                lines = history_output.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('>>>') and not line.startswith('...'):
+                        print(line)
+            else:
+                print(f"{YELLOW}⚠️  No hay logs en buffer{NC}")
+        except Exception as e:
+            print(f"{YELLOW}⚠️  No se pudieron leer logs: {e}{NC}")
+        
+        print()
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{YELLOW}🕐 Sincronizando NTP...{NC}")
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
         # Ejecutar sincronización NTP en el ESP8266 usando paste mode
         # MicroPython 1.19 requiere paste mode (Ctrl+E ... código ... Ctrl+D) para código multilínea
         # Importar módulos necesarios y ejecutar sync_ntp
@@ -169,7 +273,111 @@ else:
                     else:
                         print(line)
         
-        print(f"\n{GREEN}✅ Comando NTP ejecutado{NC}")
+        print()
+        
+        # Obtener hora actualizada después de sincronizar
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{BLUE}🕐 Hora actualizada (después de sincronizar){NC}")
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+        
+        try:
+            # Limpiar buffer
+            client.ws.settimeout(0.2)
+            try:
+                while True:
+                    client.ws.recv()
+            except:
+                pass
+            
+            get_time_code = """import time
+tm = time.localtime()
+if tm[0] > 2000:
+    print("Hora local: {:02d}:{:02d}:{:02d} {:02d}/{:02d}/{}".format(tm[3], tm[4], tm[5], tm[2], tm[1], tm[0]))
+    print("Timestamp: {}".format(time.time()))
+else:
+    print("⚠️  Hora no sincronizada (año < 2000)")
+"""
+            client.ws.send('\x05')
+            time.sleep(0.3)
+            client.ws.send(get_time_code)
+            time.sleep(0.3)
+            client.ws.send('\x04')
+            time.sleep(1.0)
+            
+            time_response = ""
+            try:
+                for _ in range(5):
+                    client.ws.settimeout(1.0)
+                    data = client.ws.recv()
+                    if isinstance(data, bytes):
+                        time_response += data.decode('utf-8', errors='ignore')
+                    else:
+                        time_response += data
+                    if ">>>" in time_response:
+                        break
+            except:
+                pass
+            
+            if time_response:
+                lines = time_response.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('>>>') and not line.startswith('...'):
+                        if '⚠️' in line:
+                            print(f"{YELLOW}{line}{NC}")
+                        else:
+                            print(f"{GREEN}{line}{NC}")
+        except Exception as e:
+            print(f"{YELLOW}⚠️  No se pudo obtener hora actualizada: {e}{NC}")
+        
+        print()
+        
+        # Mostrar logs actualizados
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+        print(f"{BLUE}📜 Logs actualizados{NC}")
+        print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
+        
+        try:
+            # Limpiar buffer
+            client.ws.settimeout(0.2)
+            try:
+                while True:
+                    client.ws.recv()
+            except:
+                pass
+            
+            # Obtener buffer histórico actualizado
+            client.ws.settimeout(5.0)
+            client.ws.send("import logger\r\n")
+            time.sleep(0.3)
+            client.ws.send("print(logger.get())\r\n")
+            time.sleep(1.0)
+            
+            history_output = ""
+            try:
+                for _ in range(10):
+                    data = client.ws.recv()
+                    if isinstance(data, bytes):
+                        history_output += data.decode('utf-8', errors='replace')
+                    else:
+                        history_output += data
+            except:
+                pass
+            
+            if history_output:
+                # Filtrar prompts
+                lines = history_output.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('>>>') and not line.startswith('...'):
+                        print(line)
+            else:
+                print(f"{YELLOW}⚠️  No hay logs en buffer{NC}")
+        except Exception as e:
+            print(f"{YELLOW}⚠️  No se pudieron leer logs: {e}{NC}")
+        
+        print()
+        print(f"{GREEN}✅ Sincronización NTP completada{NC}")
         
     except Exception as e:
         print(f"{RED}❌ Error durante sincronización NTP: {e}{NC}")
