@@ -124,6 +124,7 @@ def recover_state_after_boot(state, has_ntp):
             state['fridge_on'] = True
             state['cycle_elapsed_seconds'] = 0
             state['last_save_timestamp'] = current_timestamp
+            state['last_ntp_timestamp'] = 0  # Reset NTP timestamp (no NTP available)
             return (True, 0)
         
         time_delta = current_timestamp - last_save
@@ -142,6 +143,7 @@ def recover_state_after_boot(state, has_ntp):
         state['fridge_on'] = fridge_on
         state['cycle_elapsed_seconds'] = remainder
         state['last_save_timestamp'] = current_timestamp
+        state['last_ntp_timestamp'] = 0  # Reset NTP timestamp (no NTP available)
         return (fridge_on, remainder)
     
     # CON NTP
