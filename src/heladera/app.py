@@ -95,7 +95,6 @@ def run(cfg):
                 # Actualizar timestamps si NTP válido y sin drift (nueva línea base)
                 if new_has_ntp and not drift_detected:
                     state.update_ntp_timestamp(s, t)
-                    s['last_save_timestamp'] = t
                 
                 if new_has_ntp != has_ntp or drift_detected:
                     old_has_ntp = has_ntp
@@ -118,7 +117,6 @@ def run(cfg):
                         _set_relay_state(relay, led, fridge_on)
                         logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {tm[3]:02d}:{tm[4]:02d}')
                         s['fridge_on'] = fridge_on
-                        s['last_save_timestamp'] = t
                         state.update_ntp_timestamp(s, t)
                         if not has_ntp:
                             cycle_start = t
@@ -128,7 +126,9 @@ def run(cfg):
             
             if t - last_save >= 60.0:
                 try:
-                    state.save_state(s)
+                    if state.save_state(s):
+                        # Actualizar timestamp solo después de guardar exitosamente
+                        s['last_save_timestamp'] = t
                     last_save = t
                     time.sleep(0)
                     gc.collect()
