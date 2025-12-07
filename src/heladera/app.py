@@ -13,6 +13,7 @@ try:
     from heladera import state
     # Night hours constants imported from state.py to ensure consistency
     from heladera.state import NIGHT_START_HOUR, NIGHT_START_MINUTE, NIGHT_END_HOUR
+    import ntp
 except ImportError:
     print("[heladera/app] ERROR: Módulos MicroPython no encontrados")
     # Fallback values if import fails (should not happen in normal operation)
@@ -79,11 +80,28 @@ def run(cfg):
         cycle_start = time.time() - cycle_offset if not has_ntp else None
         last_check = time.time()
         last_save = time.time()
+        last_ntp_check = time.time()  # Verificación periódica de NTP
         tick = 0
         
         while True:
             t = time.time()
             tick += 1
+            
+            # Re-evaluar RTC cada 5 min (mantiene tiempo sin WiFi)
+            if t - last_ntp_check >= 300.0:
+                last_ntp_check = t
+                new_has_ntp, drift_detected = ntp.check_ntp_status(cfg, s, 'heladera')
+                if new_has_ntp != has_ntp or drift_detected:
+                    old_has_ntp = has_ntp
+                    has_ntp = new_has_ntp and not drift_detected
+                    if old_has_ntp != has_ntp:
+                        if has_ntp:
+                            logger.log('heladera', '✓ RTC válido, hora real')
+                            cycle_start = None
+                        else:
+                            logger.log('heladera', '⚠ RTC inválido, ciclo relativo')
+                            cycle_start = time.time()
+            
             if t - last_check >= 1.0:
                 last_check = t
                 try:

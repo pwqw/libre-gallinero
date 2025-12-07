@@ -34,3 +34,55 @@ def sync_ntp(tz_offset=0):
             if i<4:time.sleep(2)
     log("✗ FAIL")
     return (False,0)
+
+def check_ntp_status(cfg, state_dict=None, log_tag='ntp'):
+    """
+    Re-evalúa el estado de NTP y detecta drift del reloj.
+    Función común para todas las apps.
+    
+    Args:
+        cfg: Diccionario de configuración (debe tener MAX_TIME_DRIFT_SECONDS)
+        state_dict: Diccionario de estado con last_ntp_timestamp y last_save_timestamp (opcional)
+        log_tag: Tag para logging (default: 'ntp')
+    
+    Returns:
+        tuple: (has_ntp: bool, drift_detected: bool)
+    """
+    import time
+    try:
+        tm = time.localtime()
+        current_year = tm[0]
+        
+        # Verificar si el año es válido (indica NTP sincronizado)
+        ntp_valid = current_year >= 2020 and current_year <= 2030
+        
+        # Cargar MAX_TIME_DRIFT_SECONDS desde configuración
+        max_drift = 300  # default 5 minutos
+        try:
+            drift_str = cfg.get('MAX_TIME_DRIFT_SECONDS', '300')
+            max_drift = int(drift_str)
+        except:
+            pass
+        
+        # Verificar drift comparando tiempo actual con last_ntp_timestamp
+        # Optimizado para MicroPython 1.19: cachear time.time() una sola vez
+        drift_detected = False
+        if state_dict:
+            last_ntp_ts = state_dict.get('last_ntp_timestamp', 0)
+            if last_ntp_ts > 0:
+                current_time = time.time()  # Llamar una sola vez
+                last_save_ts = state_dict.get('last_save_timestamp', current_time)
+                
+                # Calcular tiempo esperado: last_ntp_timestamp + tiempo transcurrido desde last_save
+                elapsed_since_save = current_time - last_save_ts
+                expected_time = last_ntp_ts + elapsed_since_save
+                time_drift = abs(current_time - expected_time)
+                
+                if time_drift > max_drift:
+                    drift_detected = True
+                    logger.log(log_tag, f'⚠ Drift: {int(time_drift)}s (max: {max_drift}s)')
+        
+        return (ntp_valid, drift_detected)
+    except Exception as e:
+        logger.log(log_tag, f'Error verificando NTP: {e}')
+        return (False, False)
