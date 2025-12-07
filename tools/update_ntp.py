@@ -3,8 +3,7 @@
 update_ntp.py - Actualiza la sincronización NTP del ESP8266 vía WebREPL
 
 Uso:
-    python3 tools/update_ntp.py              # Usa IP del .env
-    python3 tools/update_ntp.py 192.168.1.50  # IP específica
+    python3 tools/update_ntp.py              # Usa IP del .env (escrita por el scanner)
 
 Funcionamiento:
     1. Se conecta al ESP8266 vía WebREPL
@@ -39,28 +38,27 @@ def main():
     print(f"{CYAN}🕐 Actualizar NTP{NC}")
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
-    # Parsear argumentos - solo acepta IP (opcional)
-    ip_arg = None
-    
+    # No aceptar argumentos - siempre usar IP del .env
     if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        # Validar que sea una IP (contiene punto y dígitos)
-        if '.' in arg and any(c.isdigit() for c in arg):
-            ip_arg = arg
-            print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
-        else:
-            print(f"{RED}❌ Error: Argumento inválido '{arg}'. Solo se acepta una IP (ej: 192.168.1.50){NC}")
-            print(f"{YELLOW}💡 Uso: python3 tools/update_ntp.py [IP]{NC}\n")
-            sys.exit(1)
-    
-    if len(sys.argv) > 2:
-        print(f"{YELLOW}⚠️  Advertencia: Se ignoran argumentos adicionales{NC}\n")
+        print(f"{YELLOW}⚠️  Este script no acepta argumentos{NC}")
+        print(f"{BLUE}💡 Usa la IP del .env (escrita por el scanner){NC}\n")
 
     # Detectar directorio del proyecto
     project_dir = script_dir.parent
 
-    # Cargar configuración para obtener TIMEZONE
+    # Cargar configuración para obtener TIMEZONE y WEBREPL_IP
     config = load_config(project_dir)
+    
+    # Verificar que existe WEBREPL_IP en .env
+    webrepl_ip = config.get('WEBREPL_IP', '').strip()
+    if not webrepl_ip or webrepl_ip == '192.168.4.1':
+        print(f"{RED}❌ No hay IP configurada en .env (WEBREPL_IP){NC}")
+        print(f"{YELLOW}💡 Ejecuta primero el scanner para encontrar el ESP8266:{NC}")
+        print(f"   python3 tools/find_esp8266.py{NC}\n")
+        sys.exit(1)
+    
+    print(f"{BLUE}🌐 IP del .env: {webrepl_ip}{NC}\n")
+    
     tz_offset_str = config.get('TIMEZONE', '-3')
     try:
         tz_offset = int(tz_offset_str)
@@ -70,13 +68,9 @@ def main():
 
     print(f"{BLUE}🌍 Zona horaria: UTC{tz_offset:+d}{NC}\n")
 
-    # Conectar a WebREPL (usa .env o IP manual)
-    auto_discover = not bool(ip_arg)
-    client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
-
-    # Configurar IP si se especificó manualmente
-    if ip_arg:
-        client.ip = ip_arg
+    # Conectar a WebREPL usando IP del .env (sin auto-discover)
+    client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=False)
+    client.ip = webrepl_ip
 
     if not client.connect():
         print(f"{RED}❌ No se pudo conectar al ESP8266{NC}")
