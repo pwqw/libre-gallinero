@@ -101,19 +101,26 @@ La app mantiene el estado de los ciclos a través de reinicios y cortes de luz u
 
 ## Lógica de Control
 
+### Modo Normal (por defecto)
 1. **Con NTP (horario conocido):**
-   - 07:00-00:00: Ciclos de 30 min ON/OFF
-   - 00:00-07:00: Heladera apagada (descanso nocturno)
+   - 07:00-01:30: Ciclos de 12 min ON / 18 min OFF
+   - 01:30-07:00: Heladera apagada (descanso nocturno)
    - LED encendido cuando heladera está en modo OFF
    - LED apagado cuando relé activa heladera
 
 2. **Sin NTP (sin hora o drift excesivo):**
    - LED parpadeante cada 0.5s
-   - Ciclos de 30 min ON/OFF continuos (sin descanso nocturno)
+   - Ciclos de 12 min ON / 18 min OFF continuos
    - Se activa automáticamente si:
      - No hay sincronización NTP inicial
      - Drift del reloj excede `MAX_TIME_DRIFT_SECONDS` (default 300s = 5 min)
      - Año fuera de rango válido (2020-2030)
+
+### Modo Helado
+Activar con `HELADERA_MODO_HELADO=true` en `.env`:
+- Ciclos de 10 min ON / 10 min OFF
+- Sin descanso nocturno (funciona 24/7)
+- Útil para hacer hielo o enfriamiento intensivo
 
 ## Configuración NTP
 
@@ -130,3 +137,34 @@ MAX_TIME_DRIFT_SECONDS=300
 ```
 
 **Nota**: Estas configuraciones aplican a todas las apps que usan NTP, no solo heladera.
+
+## Toggle Modo Helado
+
+Para alternar entre modo normal y modo helado:
+
+**Desde PC/Mac/Termux:**
+```bash
+python3 tools/toggle_modo_helado.py              # Usa IP del .env
+python3 tools/toggle_modo_helado.py 192.168.1.50 # IP específica
+```
+
+**Desde Termux Widget:**
+- Ejecutar shortcut: "Toggle Modo Helado"
+
+El script:
+1. Lee el modo actual del .env local
+2. Alterna el valor (true ↔ false)
+3. Sube el .env actualizado al ESP8266
+4. Reinicia el ESP8266 para aplicar cambios
+
+**Modo Manual:**
+Editar `.env` y agregar/modificar:
+```bash
+HELADERA_MODO_HELADO=true   # Activar modo helado
+HELADERA_MODO_HELADO=false  # Desactivar (modo normal)
+```
+
+Luego hacer deploy:
+```bash
+python3 tools/deploy_wifi.py heladera
+```
