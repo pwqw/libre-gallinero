@@ -13,7 +13,8 @@ DEFAULT_CONFIG = {
     'TIMEZONE': '-3',
     'APP': 'blink',
     'NTP_RESYNC_INTERVAL_SECONDS': '3600',  # 1 hora
-    'MAX_TIME_DRIFT_SECONDS': '300'  # 5 minutos
+    'MAX_TIME_DRIFT_SECONDS': '300',  # 5 minutos
+    'HELADERA_MODO_HELADO': 'false'  # Modo normal por defecto
 }
 
 def log(msg):
