@@ -31,6 +31,7 @@ def get_current_mode(client):
     
     # Comando para leer el valor actual directamente
     check_cmd = """
+import sys
 try:
     modo = 'false'
     try:
@@ -41,9 +42,13 @@ try:
                     break
     except:
         pass
-    print('MODO:' + modo)
+    print('MODO:' + modo, end='')
+    if hasattr(sys.stdout, 'flush'):
+        sys.stdout.flush()
 except Exception as e:
-    print('ERROR:' + str(e))
+    print('ERROR:' + str(e), end='')
+    if hasattr(sys.stdout, 'flush'):
+        sys.stdout.flush()
 """
     
     response = client.execute(check_cmd, timeout=5)
@@ -52,11 +57,16 @@ except Exception as e:
         print(f"{YELLOW}⚠️  No se pudo leer modo actual, asumiendo 'false'{NC}")
         return 'false'
     
-    # Buscar línea con MODO:
-    for line in response.split('\n'):
-        if 'MODO:' in line:
-            modo = line.split('MODO:')[1].strip()
-            return modo
+    # Buscar MODO: en toda la respuesta
+    if 'MODO:' in response:
+        idx = response.find('MODO:')
+        # Extraer hasta 20 caracteres después de MODO:
+        modo_part = response[idx+5:idx+25].strip()
+        # Buscar true o false
+        if 'true' in modo_part.lower():
+            return 'true'
+        else:
+            return 'false'
     
     print(f"{YELLOW}⚠️  No se encontró HELADERA_MODO_HELADO, asumiendo 'false'{NC}")
     return 'false'
@@ -71,10 +81,11 @@ def toggle_mode_on_esp8266(client, current_value):
     new_value = 'false' if is_helado else 'true'
     
     # Código Python para modificar .env en el ESP8266
+    # Usamos print() inmediatos para evitar buffer
     toggle_cmd = f"""
+import os
+import sys
 try:
-    import os
-    # Leer .env
     lines = []
     found = False
     try:
@@ -85,49 +96,62 @@ try:
                     found = True
                 else:
                     lines.append(line)
-    except OSError:
-        # Si no existe .env, crear uno básico
+    except OSError as e:
         pass
-    
-    # Si no se encontró la línea, agregarla
     if not found:
         lines.append('HELADERA_MODO_HELADO={new_value}\\n')
-    
-    # Escribir .env actualizado
     with open('.env.tmp', 'w') as f:
         for line in lines:
             f.write(line)
-    
-    # Reemplazar .env original
     try:
         os.remove('.env')
     except:
         pass
     os.rename('.env.tmp', '.env')
-    
-    print('SUCCESS:{new_value}')
+    print('SUCCESS:{new_value}', end='')
+    if hasattr(sys.stdout, 'flush'):
+        sys.stdout.flush()
 except Exception as e:
-    print('ERROR:' + str(e))
+    print('ERROR:' + str(e), end='')
+    if hasattr(sys.stdout, 'flush'):
+        sys.stdout.flush()
 """
     
-    response = client.execute(toggle_cmd, timeout=10)
+    response = client.execute(toggle_cmd, timeout=15)
     
-    # Verificar resultado
+    # Debug: Mostrar respuesta cruda
+    print(f"{YELLOW}Debug - Respuesta del ESP8266:{NC}")
+    print(f"  Longitud: {len(response)} caracteres")
+    print(f"  Contiene SUCCESS: {'SUCCESS:' in response}")
+    print(f"  Contiene ERROR: {'ERROR:' in response}")
+    print(f"  Primeros 200 chars: {repr(response[:200])}")
+    
+    # Verificar resultado - buscar en toda la respuesta
     if 'SUCCESS:' in response:
-        for line in response.split('\n'):
-            if 'SUCCESS:' in line:
-                result_value = line.split('SUCCESS:')[1].strip()
-                print(f"{GREEN}✅ Modo actualizado a: {result_value}{NC}")
-                return result_value
+        # Extraer valor después de SUCCESS:
+        idx = response.find('SUCCESS:')
+        if idx >= 0:
+            # Tomar hasta 20 caracteres después de SUCCESS:
+            result_part = response[idx:idx+30]
+            # Extraer valor (true o false)
+            if 'true' in result_part.lower():
+                result_value = 'true'
+            else:
+                result_value = 'false'
+            print(f"{GREEN}✅ Modo actualizado a: {result_value}{NC}")
+            return result_value
     
     if 'ERROR:' in response:
         print(f"{RED}❌ Error al actualizar modo:{NC}")
+        # Mostrar línea con ERROR
         for line in response.split('\n'):
             if 'ERROR:' in line:
                 print(f"   {line}")
         return None
     
     print(f"{RED}❌ Respuesta inesperada del ESP8266{NC}")
+    print(f"{YELLOW}Respuesta completa:{NC}")
+    print(response)
     return None
 
 
