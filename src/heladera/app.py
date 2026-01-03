@@ -1,6 +1,7 @@
 # Heladera App - Control basado en hora real
 # Hardware "Active Low": LED pin 2, RELE pin 5
-# Ciclo: 18min OFF, 12min ON (30min total). 01:30-07:00 siempre OFF
+# Ciclo normal: 18min OFF, 12min ON (30min total). 01:30-07:00 siempre OFF
+# Ciclo modo helado: 10min OFF, 10min ON (20min total). Sin horario nocturno
 # Ciclo se reinicia cada hora (minutos 0-29 y 30-59) con NTP
 #
 # CRÍTICO para WebREPL: El loop debe ceder control frecuentemente.
@@ -24,26 +25,45 @@ except ImportError:
 RELAY_PIN = 5
 LED_PIN = 2
 
-def _get_cycle_position(tm, has_ntp, cycle_start_time):
-    """Retorna posición en ciclo (0-29 minutos). <18=OFF, >=18=ON"""
+# Constantes de ciclo
+CYCLE_NORMAL_TOTAL = 30  # 30 minutos: 18 OFF + 12 ON
+CYCLE_NORMAL_OFF_UNTIL = 18  # OFF hasta minuto 18, luego ON
+CYCLE_HELADO_TOTAL = 20  # 20 minutos: 10 OFF + 10 ON
+CYCLE_HELADO_OFF_UNTIL = 10  # OFF hasta minuto 10, luego ON
+
+def _is_modo_helado(cfg):
+    """Verifica si el modo helado está activo desde configuración"""
+    modo_helado = cfg.get('HELADERA_MODO_HELADO', 'false').lower()
+    return modo_helado in ('true', '1', 'yes', 'on')
+
+def _get_cycle_position(tm, has_ntp, cycle_start_time, modo_helado):
+    """Retorna posición en ciclo.
+    Normal: 0-29 minutos (<18=OFF, >=18=ON)
+    Helado: 0-19 minutos (<10=OFF, >=10=ON)
+    """
+    cycle_total = CYCLE_HELADO_TOTAL if modo_helado else CYCLE_NORMAL_TOTAL
     if has_ntp:
-        return tm[4] % 30
+        return tm[4] % cycle_total
     else:
         if cycle_start_time is None:
             return 0
         elapsed = int((time.time() - cycle_start_time) / 60)
-        return elapsed % 30
+        return elapsed % cycle_total
 
-def _should_fridge_be_on(tm, has_ntp, cycle_start_time):
+def _should_fridge_be_on(tm, has_ntp, cycle_start_time, modo_helado):
     """Determina si la heladera debe estar ON basado en ciclo y hora"""
     if not has_ntp and cycle_start_time is None:
         return None
-    if has_ntp:
+    # En modo helado, ignorar horario nocturno
+    if has_ntp and not modo_helado:
         h, m = tm[3], tm[4]
         if (h == NIGHT_START_HOUR and m >= NIGHT_START_MINUTE) or (h > NIGHT_START_HOUR and h < NIGHT_END_HOUR):
             return False
-    pos = _get_cycle_position(tm, has_ntp, cycle_start_time)
-    return pos >= 18
+    pos = _get_cycle_position(tm, has_ntp, cycle_start_time, modo_helado)
+    if modo_helado:
+        return pos >= CYCLE_HELADO_OFF_UNTIL
+    else:
+        return pos >= CYCLE_NORMAL_OFF_UNTIL
 
 def _set_relay_state(relay, led, on):
     """Unifica cambio de estado del relay/LED"""
@@ -58,6 +78,12 @@ def run(cfg):
     logger.log('heladera', '=== Heladera App ===')
     gc.collect()
     try:
+        modo_helado = _is_modo_helado(cfg)
+        if modo_helado:
+            logger.log('heladera', 'Modo HELADO: 10min ON/10min OFF, sin horario nocturno')
+        else:
+            logger.log('heladera', 'Modo NORMAL: 12min ON/18min OFF, descanso 01:30-07:00')
+        
         has_ntp = False
         try:
             tm = time.localtime()
@@ -69,7 +95,7 @@ def run(cfg):
         
         s = state.load_state()
         logger.log('heladera', f'Boot #{s["boot_count"]}')
-        fridge_on, cycle_offset = state.recover_state_after_boot(s, has_ntp)
+        fridge_on, cycle_offset = state.recover_state_after_boot(s, has_ntp, modo_helado)
         
         relay = machine.Pin(RELAY_PIN, machine.Pin.OUT)
         led = machine.Pin(LED_PIN, machine.Pin.OUT)
@@ -108,8 +134,10 @@ def run(cfg):
             if t - last_check >= 1.0:
                 last_check = t
                 try:
+                    # Re-evaluar modo helado desde config (permite cambios dinámicos)
+                    modo_helado = _is_modo_helado(cfg)
                     tm = time.localtime()
-                    should_on = _should_fridge_be_on(tm, has_ntp, cycle_start)
+                    should_on = _should_fridge_be_on(tm, has_ntp, cycle_start, modo_helado)
                     if should_on is not None and should_on != fridge_on:
                         fridge_on = should_on
                         _set_relay_state(relay, led, fridge_on)
@@ -138,15 +166,18 @@ def run(cfg):
             
             if tick % 1000 == 0:
                 try:
+                    modo_helado = _is_modo_helado(cfg)
                     tm = time.localtime()
                     if has_ntp:
                         logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {tm[3]:02d}:{tm[4]:02d}')
                     else:
-                        pos = _get_cycle_position(tm, False, cycle_start)
-                        if pos < 18:
-                            remaining_min = 18 - pos
+                        pos = _get_cycle_position(tm, False, cycle_start, modo_helado)
+                        cycle_total = CYCLE_HELADO_TOTAL if modo_helado else CYCLE_NORMAL_TOTAL
+                        off_until = CYCLE_HELADO_OFF_UNTIL if modo_helado else CYCLE_NORMAL_OFF_UNTIL
+                        if pos < off_until:
+                            remaining_min = off_until - pos
                         else:
-                            remaining_min = 30 - pos
+                            remaining_min = cycle_total - pos
                         logger.log('heladera', f'{"ON" if fridge_on else "OFF"} {remaining_min:.0f}m (sin NTP)')
                 except:
                     pass

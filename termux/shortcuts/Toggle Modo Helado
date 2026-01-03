@@ -1,0 +1,21 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# -*- coding: utf-8 -*-
+# Shortcut para alternar modo helado de la heladera vía WiFi
+# Alterna entre modo normal (12/18 min) y modo helado (10/10 min, sin horario nocturno)
+
+set -e
+set -u
+
+cd "$HOME/libre-gallinero"
+
+# Cargar funciones comunes
+source "$HOME/libre-gallinero/termux/common.sh"
+
+print_banner "TOGGLE: MODO HELADO"
+
+# Ejecutar toggle y capturar resultado
+if python3 tools/toggle_modo_helado.py; then
+    pause_success
+else
+    pause_error "Toggle falló"
+fi

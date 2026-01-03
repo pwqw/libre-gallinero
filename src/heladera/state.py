@@ -111,16 +111,28 @@ def update_ntp_timestamp(state, ts):
     state['last_ntp_timestamp'] = ts
     state['last_save_timestamp'] = ts
 
-def recover_state_after_boot(state, has_ntp):
+def recover_state_after_boot(state, has_ntp, modo_helado=False):
     """Recupera estado tras boot usando misma lógica de ciclo"""
     import time
+    
+    # Constantes de ciclo (mismas que app.py)
+    CYCLE_NORMAL_TOTAL = 30
+    CYCLE_NORMAL_OFF_UNTIL = 18
+    CYCLE_HELADO_TOTAL = 20
+    CYCLE_HELADO_OFF_UNTIL = 10
+    
+    cycle_total = CYCLE_HELADO_TOTAL if modo_helado else CYCLE_NORMAL_TOTAL
+    off_until = CYCLE_HELADO_OFF_UNTIL if modo_helado else CYCLE_NORMAL_OFF_UNTIL
     
     if not has_ntp:
         current_timestamp = time.time()
         last_save = state['last_save_timestamp']
         
         if last_save == 0 or current_timestamp - last_save > 7200:
-            log("Sin NTP: resetear ciclo (12 min ON)")
+            if modo_helado:
+                log("Sin NTP: resetear ciclo (10 min ON)")
+            else:
+                log("Sin NTP: resetear ciclo (12 min ON)")
             state['fridge_on'] = True
             state['cycle_elapsed_seconds'] = 0
             state['last_save_timestamp'] = current_timestamp
@@ -132,12 +144,12 @@ def recover_state_after_boot(state, has_ntp):
             log("WARNING: reloj retrocedió")
             return (True, 0)
         
-        # Calcular posición en ciclo de 30 min
+        # Calcular posición en ciclo
         elapsed_total = state['cycle_elapsed_seconds'] + time_delta
-        pos = int(elapsed_total / 60) % 30
-        fridge_on = pos >= 18
+        pos = int(elapsed_total / 60) % cycle_total
+        fridge_on = pos >= off_until
         
-        remainder = elapsed_total % (30 * 60)
+        remainder = elapsed_total % (cycle_total * 60)
         log(f"Sin NTP: {'ON' if fridge_on else 'OFF'}, {remainder//60:.0f}m en ciclo")
         
         state['fridge_on'] = fridge_on
@@ -151,16 +163,18 @@ def recover_state_after_boot(state, has_ntp):
         tm = time.localtime()
         h, m = tm[3], tm[4]
         
-        if (h == NIGHT_START_HOUR and m >= NIGHT_START_MINUTE) or (h > NIGHT_START_HOUR and h < NIGHT_END_HOUR):
-            log(f"Nocturno ({h:02d}:{m:02d}): OFF")
-            state['fridge_on'] = False
-            state['cycle_elapsed_seconds'] = 0
-            update_ntp_timestamp(state, time.time())
-            return (False, 0)
+        # En modo helado, ignorar horario nocturno
+        if not modo_helado:
+            if (h == NIGHT_START_HOUR and m >= NIGHT_START_MINUTE) or (h > NIGHT_START_HOUR and h < NIGHT_END_HOUR):
+                log(f"Nocturno ({h:02d}:{m:02d}): OFF")
+                state['fridge_on'] = False
+                state['cycle_elapsed_seconds'] = 0
+                update_ntp_timestamp(state, time.time())
+                return (False, 0)
         
         # Misma lógica que app.py (ciclo reinicia cada hora)
-        pos = m % 30
-        fridge_on = pos >= 18
+        pos = m % cycle_total
+        fridge_on = pos >= off_until
         
         log(f"Hora ({h:02d}:{m:02d}): {'ON' if fridge_on else 'OFF'}")
         state['fridge_on'] = fridge_on
