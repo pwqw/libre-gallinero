@@ -80,41 +80,37 @@ def toggle_mode_on_esp8266(client, current_value):
     is_helado = current_value.lower() in ('true', '1', 'yes', 'on')
     new_value = 'false' if is_helado else 'true'
     
-    # Código Python para modificar .env en el ESP8266
-    # Usamos print() inmediatos para evitar buffer
-    toggle_cmd = f"""
-import os
+    # Código Python - formato simple sin indentación compleja
+    # Usa método atómico: escribir a .env.tmp y luego rename
+    toggle_cmd = f"""import os
 import sys
+lines = []
+found = False
 try:
-    lines = []
-    found = False
-    try:
-        with open('.env', 'r') as f:
-            for line in f:
-                if line.strip().startswith('HELADERA_MODO_HELADO='):
-                    lines.append('HELADERA_MODO_HELADO={new_value}\\n')
-                    found = True
-                else:
-                    lines.append(line)
-    except OSError as e:
-        pass
-    if not found:
-        lines.append('HELADERA_MODO_HELADO={new_value}\\n')
-    with open('.env.tmp', 'w') as f:
-        for line in lines:
-            f.write(line)
-    try:
-        os.remove('.env')
-    except:
-        pass
-    os.rename('.env.tmp', '.env')
-    print('SUCCESS:{new_value}', end='')
-    if hasattr(sys.stdout, 'flush'):
-        sys.stdout.flush()
-except Exception as e:
-    print('ERROR:' + str(e), end='')
-    if hasattr(sys.stdout, 'flush'):
-        sys.stdout.flush()
+    f = open('.env', 'r')
+    for line in f:
+        if line.strip().startswith('HELADERA_MODO_HELADO='):
+            lines.append('HELADERA_MODO_HELADO={new_value}\\n')
+            found = True
+        else:
+            lines.append(line)
+    f.close()
+except:
+    pass
+if not found:
+    lines.append('HELADERA_MODO_HELADO={new_value}\\n')
+f = open('.env.tmp', 'w')
+for line in lines:
+    f.write(line)
+f.close()
+try:
+    os.remove('.env')
+except:
+    pass
+os.rename('.env.tmp', '.env')
+print('SUCCESS:{new_value}', end='')
+if hasattr(sys.stdout, 'flush'):
+    sys.stdout.flush()
 """
     
     response = client.execute(toggle_cmd, timeout=15)
@@ -124,7 +120,14 @@ except Exception as e:
     print(f"  Longitud: {len(response)} caracteres")
     print(f"  Contiene SUCCESS: {'SUCCESS:' in response}")
     print(f"  Contiene ERROR: {'ERROR:' in response}")
-    print(f"  Primeros 200 chars: {repr(response[:200])}")
+    print(f"  Contiene Traceback: {'Traceback' in response}")
+    
+    # Si hay traceback, mostrarlo completo
+    if 'Traceback' in response:
+        print(f"{RED}❌ Error de ejecución en ESP8266:{NC}")
+        print(f"{YELLOW}Traceback completo:{NC}")
+        print(response)
+        return None
     
     # Verificar resultado - buscar en toda la respuesta
     if 'SUCCESS:' in response:
@@ -143,15 +146,17 @@ except Exception as e:
     
     if 'ERROR:' in response:
         print(f"{RED}❌ Error al actualizar modo:{NC}")
-        # Mostrar línea con ERROR
+        # Mostrar todas las líneas con ERROR
         for line in response.split('\n'):
-            if 'ERROR:' in line:
+            if 'ERROR:' in line or line.strip():
                 print(f"   {line}")
         return None
     
     print(f"{RED}❌ Respuesta inesperada del ESP8266{NC}")
-    print(f"{YELLOW}Respuesta completa:{NC}")
-    print(response)
+    print(f"{YELLOW}Respuesta completa (primeros 500 chars):{NC}")
+    print(response[:500])
+    if len(response) > 500:
+        print(f"{YELLOW}... (truncado, total: {len(response)} chars){NC}")
     return None
 
 
