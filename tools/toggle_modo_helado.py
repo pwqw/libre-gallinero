@@ -1,245 +1,164 @@
 #!/usr/bin/env python3
 """
-toggle_modo_helado.py - Alterna el modo helado de la heladera vía WebREPL
+Toggle Modo Helado - Alterna modo helado de la heladera vía WebREPL
 
 Uso:
     python3 tools/toggle_modo_helado.py              # Usa IP del .env
     python3 tools/toggle_modo_helado.py 192.168.1.50 # IP específica
 
-Funcionamiento:
-    1. Se conecta al ESP8266 vía WebREPL
-    2. Lee el .env actual
-    3. Alterna HELADERA_MODO_HELADO (true/false)
-    4. Escribe el .env actualizado
-    5. Muestra el estado actual
+Modifica HELADERA_MODO_HELADO en .env local, lo sube al ESP8266,
+y reinicia para aplicar cambios.
 """
 
 import sys
-import time
+import re
 from pathlib import Path
 
-# Agregar directorio de herramientas al path
 script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir / 'common'))
 
 from webrepl_client import WebREPLClient, RED, GREEN, YELLOW, BLUE, CYAN, NC
 
 
-def get_current_mode(client):
-    """Obtiene el estado actual del modo helado ejecutando código en ESP8266"""
-    print(f"{BLUE}📖 Leyendo estado actual...{NC}")
-    
-    # Comando para leer el valor actual directamente
-    check_cmd = """
-import sys
-try:
-    modo = 'false'
-    try:
-        with open('.env', 'r') as f:
-            for line in f:
-                if line.strip().startswith('HELADERA_MODO_HELADO='):
-                    modo = line.split('=', 1)[1].strip().strip('"').strip("'")
-                    break
-    except:
-        pass
-    print('MODO:' + modo, end='')
-    if hasattr(sys.stdout, 'flush'):
-        sys.stdout.flush()
-except Exception as e:
-    print('ERROR:' + str(e), end='')
-    if hasattr(sys.stdout, 'flush'):
-        sys.stdout.flush()
-"""
-    
-    response = client.execute(check_cmd, timeout=5)
-    
-    if 'ERROR:' in response:
-        print(f"{YELLOW}⚠️  No se pudo leer modo actual, asumiendo 'false'{NC}")
+def leer_modo_actual(env_path):
+    """Lee HELADERA_MODO_HELADO del .env local"""
+    if not env_path.exists():
         return 'false'
     
-    # Buscar MODO: en toda la respuesta
-    if 'MODO:' in response:
-        idx = response.find('MODO:')
-        # Extraer hasta 20 caracteres después de MODO:
-        modo_part = response[idx+5:idx+25].strip()
-        # Buscar true o false
-        if 'true' in modo_part.lower():
-            return 'true'
-        else:
-            return 'false'
-    
-    print(f"{YELLOW}⚠️  No se encontró HELADERA_MODO_HELADO, asumiendo 'false'{NC}")
+    with open(env_path, 'r') as f:
+        for line in f:
+            if line.strip().startswith('HELADERA_MODO_HELADO='):
+                valor = line.split('=', 1)[1].strip().strip('"').strip("'")
+                return valor.lower()
     return 'false'
 
 
-def toggle_mode_on_esp8266(client, current_value):
-    """Alterna el modo helado ejecutando código directamente en ESP8266"""
-    print(f"{BLUE}📝 Alternando modo helado...{NC}")
+def actualizar_env(env_path, nuevo_valor):
+    """Actualiza HELADERA_MODO_HELADO en .env local, retorna path al temporal"""
+    temp_path = env_path.parent / '.env.tmp'
     
-    # Determinar nuevo valor
-    is_helado = current_value.lower() in ('true', '1', 'yes', 'on')
-    new_value = 'false' if is_helado else 'true'
-    
-    # Código Python - formato simple sin indentación compleja
-    # Usa método atómico: escribir a .env.tmp y luego rename
-    toggle_cmd = f"""import os
-import sys
-lines = []
-found = False
-try:
-    f = open('.env', 'r')
-    for line in f:
-        if line.strip().startswith('HELADERA_MODO_HELADO='):
-            lines.append('HELADERA_MODO_HELADO={new_value}\\n')
-            found = True
+    if env_path.exists():
+        with open(env_path, 'r') as f:
+            contenido = f.read()
+        
+        # Actualizar o agregar
+        if re.search(r'^HELADERA_MODO_HELADO=', contenido, re.MULTILINE):
+            contenido = re.sub(
+                r'^HELADERA_MODO_HELADO=.*$',
+                f'HELADERA_MODO_HELADO={nuevo_valor}',
+                contenido,
+                flags=re.MULTILINE
+            )
         else:
-            lines.append(line)
-    f.close()
-except:
-    pass
-if not found:
-    lines.append('HELADERA_MODO_HELADO={new_value}\\n')
-f = open('.env.tmp', 'w')
-for line in lines:
-    f.write(line)
-f.close()
-try:
-    os.remove('.env')
-except:
-    pass
-os.rename('.env.tmp', '.env')
-print('SUCCESS:{new_value}', end='')
-if hasattr(sys.stdout, 'flush'):
-    sys.stdout.flush()
-"""
+            if not contenido.endswith('\n'):
+                contenido += '\n'
+            contenido += f'\n# Modo helado (auto-updated)\nHELADERA_MODO_HELADO={nuevo_valor}\n'
+    else:
+        contenido = f'HELADERA_MODO_HELADO={nuevo_valor}\n'
     
-    response = client.execute(toggle_cmd, timeout=15)
+    with open(temp_path, 'w') as f:
+        f.write(contenido)
     
-    # Debug: Mostrar respuesta cruda
-    print(f"{YELLOW}Debug - Respuesta del ESP8266:{NC}")
-    print(f"  Longitud: {len(response)} caracteres")
-    print(f"  Contiene SUCCESS: {'SUCCESS:' in response}")
-    print(f"  Contiene ERROR: {'ERROR:' in response}")
-    print(f"  Contiene Traceback: {'Traceback' in response}")
-    
-    # Si hay traceback, mostrarlo completo
-    if 'Traceback' in response:
-        print(f"{RED}❌ Error de ejecución en ESP8266:{NC}")
-        print(f"{YELLOW}Traceback completo:{NC}")
-        print(response)
-        return None
-    
-    # Verificar resultado - buscar en toda la respuesta
-    if 'SUCCESS:' in response:
-        # Extraer valor después de SUCCESS:
-        idx = response.find('SUCCESS:')
-        if idx >= 0:
-            # Tomar hasta 20 caracteres después de SUCCESS:
-            result_part = response[idx:idx+30]
-            # Extraer valor (true o false)
-            if 'true' in result_part.lower():
-                result_value = 'true'
-            else:
-                result_value = 'false'
-            print(f"{GREEN}✅ Modo actualizado a: {result_value}{NC}")
-            return result_value
-    
-    if 'ERROR:' in response:
-        print(f"{RED}❌ Error al actualizar modo:{NC}")
-        # Mostrar todas las líneas con ERROR
-        for line in response.split('\n'):
-            if 'ERROR:' in line or line.strip():
-                print(f"   {line}")
-        return None
-    
-    print(f"{RED}❌ Respuesta inesperada del ESP8266{NC}")
-    print(f"{YELLOW}Respuesta completa (primeros 500 chars):{NC}")
-    print(response[:500])
-    if len(response) > 500:
-        print(f"{YELLOW}... (truncado, total: {len(response)} chars){NC}")
-    return None
+    return temp_path
 
 
 def main():
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
-    print(f"{CYAN}❄️  Alternar Modo Helado{NC}")
+    print(f"{CYAN}❄️  Toggle Modo Helado - Heladera{NC}")
     print(f"{CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
-    # Parsear argumentos
+    # Parsear IP opcional
     ip_arg = None
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if '.' in arg and any(c.isdigit() for c in arg):
             ip_arg = arg
-            print(f"{BLUE}🌐 IP especificada: {ip_arg}{NC}\n")
+            print(f"{BLUE}🌐 IP: {ip_arg}{NC}\n")
 
-    # Detectar directorio del proyecto
     project_dir = script_dir.parent
+    env_path = project_dir / '.env'
 
-    # Conectar a WebREPL
+    # 1. Leer modo actual del .env LOCAL
+    modo_actual = leer_modo_actual(env_path)
+    es_helado = modo_actual in ('true', '1', 'yes', 'on')
+
+    print(f"{YELLOW}Estado actual:{NC}")
+    if es_helado:
+        print(f"  {CYAN}❄️  Modo HELADO{NC} (10/10 min, sin horario nocturno)")
+    else:
+        print(f"  {BLUE}🌡️  Modo NORMAL{NC} (12/18 min, descanso 01:30-07:00)")
+
+    # 2. Alternar valor
+    nuevo_valor = 'false' if es_helado else 'true'
+
+    print(f"\n{YELLOW}Nuevo estado:{NC}")
+    if nuevo_valor == 'true':
+        print(f"  {CYAN}❄️  Activando Modo HELADO{NC}")
+    else:
+        print(f"  {BLUE}🌡️  Volviendo a Modo NORMAL{NC}")
+
+    # 3. Actualizar .env local
+    print(f"\n{BLUE}📝 Actualizando .env local...{NC}")
+    temp_env = actualizar_env(env_path, nuevo_valor)
+    print(f"{GREEN}   ✅ .env.tmp creado{NC}")
+
+    # 4. Conectar al ESP8266
+    print(f"\n{BLUE}🔌 Conectando al ESP8266...{NC}")
     auto_discover = not bool(ip_arg)
     client = WebREPLClient(project_dir=project_dir, verbose=True, auto_discover=auto_discover)
-
+    
     if ip_arg:
         client.ip = ip_arg
 
     if not client.connect():
         print(f"{RED}❌ No se pudo conectar al ESP8266{NC}")
+        temp_env.unlink(missing_ok=True)
         sys.exit(1)
 
-    print(f"\n{GREEN}✅ Conectado al ESP8266{NC}\n")
+    print(f"{GREEN}   ✅ Conectado{NC}")
 
+    # 5. Subir .env al ESP8266
+    print(f"\n{BLUE}📤 Subiendo .env al ESP8266...{NC}")
     try:
-        # Obtener estado actual
-        current_value = get_current_mode(client)
-        is_helado = current_value.lower() in ('true', '1', 'yes', 'on')
-
-        print(f"\n{YELLOW}Estado actual:{NC}")
-        if is_helado:
-            print(f"  {CYAN}❄️  Modo HELADO activo{NC}")
-            print(f"  Ciclo: 10 min ON / 10 min OFF")
-            print(f"  Horario nocturno: IGNORADO (siempre activo)")
+        if client.send_file(str(temp_env), '.env'):
+            print(f"{GREEN}   ✅ .env actualizado en ESP8266{NC}")
         else:
-            print(f"  {BLUE}🌡️  Modo NORMAL activo{NC}")
-            print(f"  Ciclo: 12 min ON / 18 min OFF")
-            print(f"  Horario nocturno: 01:30-07:00 OFF")
-
-        print(f"\n{YELLOW}Alternando modo...{NC}")
-        if not is_helado:
-            print(f"  {CYAN}❄️  Activando Modo HELADO{NC}")
-        else:
-            print(f"  {BLUE}🌡️  Desactivando Modo HELADO (volviendo a NORMAL){NC}")
-
-        # Alternar modo directamente en el ESP8266
-        new_value = toggle_mode_on_esp8266(client, current_value)
-        
-        if new_value:
-            print(f"\n{GREEN}✅ Modo helado alternado exitosamente{NC}")
-            print(f"{YELLOW}💡 El cambio se aplicará en el próximo ciclo (~1 segundo){NC}")
-            print(f"{YELLOW}   (o reinicia el ESP8266 para aplicar inmediatamente){NC}\n")
-        else:
-            print(f"\n{RED}❌ Error al alternar modo helado{NC}\n")
+            print(f"{RED}   ❌ Error subiendo .env{NC}")
             client.close()
+            temp_env.unlink(missing_ok=True)
             sys.exit(1)
-
-    except Exception as e:
-        print(f"{RED}❌ Error: {e}{NC}")
-        import traceback
-        traceback.print_exc()
-        client.close()
-        sys.exit(1)
     finally:
-        client.close()
+        temp_env.unlink(missing_ok=True)
+
+    # 6. Resetear ESP8266 para aplicar cambios
+    print(f"\n{BLUE}🔄 Reiniciando ESP8266...{NC}")
+    try:
+        client.reset()
+        print(f"{GREEN}   ✅ Reset enviado{NC}")
+    except:
+        print(f"{YELLOW}   ⚠️  No se pudo resetear (aplicará en próximo ciclo){NC}")
+    
+    client.close()
+
+    # Resumen
+    print(f"\n{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}")
+    if nuevo_valor == 'true':
+        print(f"{GREEN}✅ Modo HELADO activado{NC}")
+        print(f"   Ciclo: 10 min ON / 10 min OFF")
+        print(f"   Horario nocturno: IGNORADO")
+    else:
+        print(f"{GREEN}✅ Modo NORMAL activado{NC}")
+        print(f"   Ciclo: 12 min ON / 18 min OFF")
+        print(f"   Horario nocturno: 01:30-07:00 OFF")
+    print(f"{GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{NC}\n")
 
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n{GREEN}👋 Cancelado por usuario{NC}")
+        print(f"\n{YELLOW}Cancelado{NC}")
         sys.exit(0)
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{NC}")
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
